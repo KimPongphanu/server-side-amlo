@@ -46,6 +46,7 @@ model Department {
   title       String
   cover_image String
   content     String?       @db.Text
+  isDelete    Boolean       @default(false)
   gallery     GalleryItem[]
 }
 
