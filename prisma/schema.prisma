@@ -1,0 +1,83 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+  engineType = "library"
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  uuid         String   @unique @default(uuid())
+  email        String   @unique
+  password     String
+  firstname    String   
+  lastname     String  
+  recentOnline DateTime @updatedAt
+  createdAt    DateTime @default(now())
+}
+
+enum NewsType {
+  NEWS
+  PR
+}
+
+enum GalleryType {
+  IMAGE
+  VIDEO
+}
+
+model News {
+  id          Int      @id @default(autoincrement())
+  type        NewsType 
+  title       String
+  date        DateTime @default(now())
+  image_src   String
+  description String
+  content     String?  @db.Text
+  views       Int      @default(0)
+  isShow      Boolean  @default(true)
+}
+
+// 2. ความสัมพันธ์แบบ One-to-Many (1 Department มีได้หลาย GalleryItem)
+model Department {
+  id          Int           @id @default(autoincrement())
+  title       String
+  cover_image String
+  content     String?       @db.Text
+  gallery     GalleryItem[]
+}
+
+model GalleryItem {
+  id           Int        @id @default(autoincrement())
+  type         GalleryType
+  url          String
+  departmentId Int
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+}
+
+// 3. ใช้ String ID ควบคู่กับ UUID ตามโครงสร้างฝั่ง Frontend
+model CommentItem {
+  id        String   @id @default(uuid()) 
+  msg       String   @db.Text
+  star      Int
+  isShow    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model ContactRequest {
+  id               String   @id @default(cuid())
+  firstName        String   @map("first_name") 
+  lastName         String   @map("last_name")
+  email            String
+  telNumber        String   @map("tel_number")
+  preferredContact String   @map("preferred_contact")
+  message          String   @db.Text
+  status           String   @default("ยังไม่ตอบกลับ")
+  createdAt        DateTime @default(now()) @map("created_at") 
+  // 🌟 เพิ่มฟิลด์นี้เข้าไปครับ
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("contact_requests") 
+}
