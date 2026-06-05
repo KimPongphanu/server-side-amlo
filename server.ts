@@ -7,6 +7,7 @@ import cookieParser from 'cookie-parser'
 import cors from 'cors'
 import { apiLimiter } from './middlewares/rateLimiter'
 import authRoutes from './routes/authRoute'
+import commentRoutes from './routes/commentRoute'
 import contactRoutes from './routes/contactRoute'
 import departmentRoutes from './routes/departmentRoute'
 import fileRoutes from './routes/fileRoute'
@@ -39,6 +40,7 @@ app.use('/api/news', newsRoutes)
 app.use('/api/departments', departmentRoutes)
 app.use('/api/files', fileRoutes)
 app.use('/api/contact', contactRoutes)
+app.use('/api/comments', commentRoutes)
 
 app.get('/', (req: Request, res: Response) => {
   res.send('Server is running with TypeScript!')

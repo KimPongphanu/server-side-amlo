@@ -26,7 +26,7 @@ export const loginLimiter = rateLimit({
 
 export const uploadLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10, // อัปโหลดได้สูงสุด 10 ครั้งต่อ 15 นาที
+  max: 100, // อัปโหลดได้สูงสุด 10 ครั้งต่อ 15 นาที
   message: {
     message: 'คุณทำรายการอัปโหลดถี่เกินไป กรุณาลองใหม่อีกครั้งในอีก 15 นาที',
   },
@@ -37,8 +37,19 @@ export const uploadLimiter = rateLimit({
 // สำหรับกลุ่มดึงข้อมูลทั่วไป (Public API)
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100, // เรียกดูข้อมูลได้ 100 ครั้งต่อ 15 นาที
+  max: 10000, // เรียกดูข้อมูลได้ 100 ครั้งต่อ 15 นาที
   message: { message: 'ระบบตรวจพบการเรียกใช้งานที่ถี่เกินไป' },
   standardHeaders: true,
   legacyHeaders: false,
+})
+
+export const commentRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // กำหนดกรอบเวลา 15 นาที
+  max: 200, // จำกัดการส่งความคิดเห็นได้สูงสุด 5 ครั้ง ต่อ 1 ไอพี ภายในกรอบเวลา
+  message: {
+    success: false,
+    message: 'คุณส่งความคิดเห็นบ่อยเกินไป กรุณารอ 15 นาที แล้วลองใหม่อีกครั้ง',
+  },
+  standardHeaders: true, // คืนค่า X-RateLimit-Limit และ X-RateLimit-Remaining ใน headers
+  legacyHeaders: false, // ปิดการใช้งาน X-RateLimit-* แบบเก่า
 })
