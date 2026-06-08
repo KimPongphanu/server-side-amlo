@@ -57,12 +57,14 @@ router.post(
       const rawUrls: string[] = Array.isArray(galleryUrls)
         ? galleryUrls
         : galleryUrls
-        ? [galleryUrls]
-        : []
+          ? [galleryUrls]
+          : []
 
       for (const url of rawUrls) {
         if (!youtubeRegex.test(url)) {
-          return res.status(400).json({ message: `YouTube URL ไม่ถูกต้อง: ${url}` })
+          return res
+            .status(400)
+            .json({ message: `YouTube URL ไม่ถูกต้อง: ${url}` })
         }
       }
 
@@ -99,13 +101,15 @@ router.post(
 
       const formattedDepartment = {
         ...department,
-        gallery: department.gallery.map(g => ({
+        gallery: department.gallery.map((g) => ({
           ...g,
-          type: g.type.toLowerCase()
-        }))
+          type: g.type.toLowerCase(),
+        })),
       }
 
-      res.status(201).json({ message: 'สร้างภาควิชาสำเร็จ', data: formattedDepartment })
+      res
+        .status(201)
+        .json({ message: 'สร้างภาควิชาสำเร็จ', data: formattedDepartment })
     } catch (error: any) {
       console.error('Create Department Error:', error.message)
       res.status(500).json({ error: 'เกิดข้อผิดพลาดภายในระบบ' })
@@ -140,30 +144,37 @@ router.get('/', async (req: Request, res: Response): Promise<any> => {
     res.status(200).json(formattedDepartments)
   } catch (error: any) {
     console.error('GET DEPARTMENTS FATAL ERROR:', error)
-    res.status(500).json({ error: 'เกิดข้อผิดพลาดภายในระบบ', message: error?.message, stack: error?.stack })
-  }
-})
-
-
-router.delete('/:id', auth, async (req: Request, res: Response): Promise<any> => {
-  try {
-    const id = parseInt(req.params.id)
-    if (isNaN(id)) {
-      return res.status(400).json({ message: 'ID ไม่ถูกต้อง' })
-    }
-
-    // Soft delete จะทำการซ่อนข้อมูลแทนการลบออกจาก Database จริงๆ
-    await prisma.department.update({
-      where: { id },
-      data: { isDelete: true },
+    res.status(500).json({
+      error: 'เกิดข้อผิดพลาดภายในระบบ',
+      message: error?.message,
+      stack: error?.stack,
     })
-
-    res.status(200).json({ message: 'ลบหน่วยงานสำเร็จ' })
-  } catch (error: any) {
-    console.error('Delete Department Error:', error.message)
-    res.status(500).json({ error: 'เกิดข้อผิดพลาดในการลบข้อมูล' })
   }
 })
+
+router.delete(
+  '/:id',
+  auth,
+  async (req: Request, res: Response): Promise<any> => {
+    try {
+      const id = parseInt(req.params.id)
+      if (isNaN(id)) {
+        return res.status(400).json({ message: 'ID ไม่ถูกต้อง' })
+      }
+
+      // Soft delete จะทำการซ่อนข้อมูลแทนการลบออกจาก Database จริงๆ
+      await prisma.department.update({
+        where: { id },
+        data: { isDelete: true },
+      })
+
+      res.status(200).json({ message: 'ลบหน่วยงานสำเร็จ' })
+    } catch (error: any) {
+      console.error('Delete Department Error:', error.message)
+      res.status(500).json({ error: 'เกิดข้อผิดพลาดในการลบข้อมูล' })
+    }
+  },
+)
 
 router.put(
   '/:id',
@@ -178,21 +189,42 @@ router.put(
       const id = parseInt(req.params.id)
       if (isNaN(id)) return res.status(400).json({ message: 'ID ไม่ถูกต้อง' })
 
-      const { title, content, galleryUrls, existingGalleryUrls, isGalleryUpdated } = req.body
-      const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined
+      const {
+        title,
+        content,
+        galleryUrls,
+        existingGalleryUrls,
+        isGalleryUpdated,
+      } = req.body
+      const files = req.files as
+        | { [fieldname: string]: Express.Multer.File[] }
+        | undefined
 
-      if (!title) return res.status(400).json({ message: 'กรุณากรอกหัวข้อภาควิชา' })
-      if (title.length > 150) return res.status(400).json({ message: 'หัวข้อยาวเกินกำหนด' })
+      if (!title)
+        return res.status(400).json({ message: 'กรุณากรอกหัวข้อภาควิชา' })
+      if (title.length > 150)
+        return res.status(400).json({ message: 'หัวข้อยาวเกินกำหนด' })
 
       const existingDept = await prisma.department.findUnique({ where: { id } })
-      if (!existingDept) return res.status(404).json({ message: 'ไม่พบหน่วยงานที่ต้องการแก้ไข' })
+      if (!existingDept)
+        return res.status(404).json({ message: 'ไม่พบหน่วยงานที่ต้องการแก้ไข' })
 
-      const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4']
-      const allFiles = [...(files?.['cover_image'] || []), ...(files?.['gallery'] || [])]
-      
+      const allowedMimeTypes = [
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'video/mp4',
+      ]
+      const allFiles = [
+        ...(files?.['cover_image'] || []),
+        ...(files?.['gallery'] || []),
+      ]
+
       for (const file of allFiles) {
         if (!allowedMimeTypes.includes(file.mimetype)) {
-          return res.status(400).json({ message: `ไฟล์ ${file.originalname} ไม่รองรับ` })
+          return res
+            .status(400)
+            .json({ message: `ไฟล์ ${file.originalname} ไม่รองรับ` })
         }
       }
 
@@ -204,12 +236,24 @@ router.put(
       // ถ้ามีการส่งไฟล์ gallery หรือ galleryUrls มาใหม่ ให้ลบของเก่าแล้วสร้างใหม่
       let galleryUpdateData = undefined
       if (isGalleryUpdated === 'true') {
-        const youtubeRegex = /^https?:\/\/(?:youtu\.be\/|www\.youtube\.com\/(?:watch\?v=|shorts\/|embed\/))([\w-]{11})/
-        const rawUrls: string[] = Array.isArray(galleryUrls) ? galleryUrls : galleryUrls ? [galleryUrls] : []
-        const rawExistingUrls: string[] = Array.isArray(existingGalleryUrls) ? existingGalleryUrls : existingGalleryUrls ? [existingGalleryUrls] : []
+        const youtubeRegex =
+          /^https?:\/\/(?:youtu\.be\/|www\.youtube\.com\/(?:watch\?v=|shorts\/|embed\/))([\w-]{11})/
+        const rawUrls: string[] = Array.isArray(galleryUrls)
+          ? galleryUrls
+          : galleryUrls
+            ? [galleryUrls]
+            : []
+        const rawExistingUrls: string[] = Array.isArray(existingGalleryUrls)
+          ? existingGalleryUrls
+          : existingGalleryUrls
+            ? [existingGalleryUrls]
+            : []
 
         for (const url of rawUrls) {
-          if (!youtubeRegex.test(url)) return res.status(400).json({ message: `YouTube URL ไม่ถูกต้อง: ${url}` })
+          if (!youtubeRegex.test(url))
+            return res
+              .status(400)
+              .json({ message: `YouTube URL ไม่ถูกต้อง: ${url}` })
         }
 
         const newGalleryData = [
@@ -219,12 +263,14 @@ router.put(
           })),
           ...(files?.['gallery'] || []).map((file) => ({
             url: `/uploads/${file.filename}`,
-            type: file.mimetype.startsWith('video/') ? ('VIDEO' as const) : ('IMAGE' as const),
+            type: file.mimetype.startsWith('video/')
+              ? ('VIDEO' as const)
+              : ('IMAGE' as const),
           })),
           ...rawUrls.map((url) => ({
             url,
             type: 'VIDEO' as const,
-          }))
+          })),
         ]
 
         galleryUpdateData = {
@@ -239,25 +285,27 @@ router.put(
           title,
           content,
           cover_image: coverImagePath,
-          ...(galleryUpdateData && { gallery: galleryUpdateData })
+          ...(galleryUpdateData && { gallery: galleryUpdateData }),
         },
         include: { gallery: true },
       })
 
       const formattedDepartment = {
         ...updatedDept,
-        gallery: updatedDept.gallery.map(g => ({
+        gallery: updatedDept.gallery.map((g) => ({
           ...g,
-          type: g.type.toLowerCase()
-        }))
+          type: g.type.toLowerCase(),
+        })),
       }
 
-      res.status(200).json({ message: 'แก้ไขหน่วยงานสำเร็จ', data: formattedDepartment })
+      res
+        .status(200)
+        .json({ message: 'แก้ไขหน่วยงานสำเร็จ', data: formattedDepartment })
     } catch (error: any) {
       console.error('Update Department Error:', error.message)
       res.status(500).json({ error: 'เกิดข้อผิดพลาดในการแก้ไขข้อมูล' })
     }
-  }
+  },
 )
 
 export default router

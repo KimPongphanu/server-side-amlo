@@ -135,6 +135,13 @@ router.post(
       res.status(200).json({
         message: 'เข้าสู่ระบบสำเร็จ',
         success: true,
+        user: {
+          uuid: user.uuid,
+          email: user.email,
+          firstname: user.firstname,
+          lastname: user.lastname,
+          role: 'Admin',
+        },
       })
     } catch (error: any) {
       // บันทึกความผิดพลาดลง Log หลังบ้านเพื่อความปลอดภัย
@@ -191,7 +198,10 @@ router.get('/me', auth, async (req: any, res: Response): Promise<any> => {
     // 🌟 ส่งสถานะ success: true และแพ็คข้อมูล user กลับไปให้หน้าบ้านเช็คเงื่อนไขได้ถูกต้อง
     res.status(200).json({
       success: true,
-      user,
+      user: {
+        ...user,
+        role: 'Admin',
+      },
     })
   } catch (error: any) {
     res.status(500).json({
