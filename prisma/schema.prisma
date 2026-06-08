@@ -84,3 +84,12 @@ model CommentItem {
 
   @@map("comment_items") // ตั้งชื่อ table ในฐานข้อมูลเป็นตัวพิมพ์เล็กแบบ Snake Case
 }
+
+model SliderImage {
+  id        Int      @id @default(autoincrement())
+  image_url String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@map("slider_images")
+}

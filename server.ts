@@ -13,6 +13,7 @@ import departmentRoutes from './routes/departmentRoute'
 import fileRoutes from './routes/fileRoute'
 import newsRoutes from './routes/newsRoute'
 import uploadRoutes from './routes/uploadRoute'
+import sliderRoutes from './routes/sliderRoute'
 
 const app: Express = express()
 const port: number = 8080
@@ -41,6 +42,7 @@ app.use('/api/departments', departmentRoutes)
 app.use('/api/files', fileRoutes)
 app.use('/api/contact', contactRoutes)
 app.use('/api/comments', commentRoutes)
+app.use('/api/slider', sliderRoutes)
 
 app.get('/', (req: Request, res: Response) => {
   res.send('Server is running with TypeScript!')
