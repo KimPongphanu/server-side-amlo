@@ -53,7 +53,7 @@ router.post(
         data: {
           star: parsedStar,
           msg: msg.trim(),
-          isShow: false, // ตั้งค่าเริ่มต้นให้แสดงผลบนหน้าเว็บทันที
+          isShow: parsedStar >= 4, // ตั้งค่าเริ่มต้นให้แสดงผลบนหน้าเว็บทันที
         },
       })
 
