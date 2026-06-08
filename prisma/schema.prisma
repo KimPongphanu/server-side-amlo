@@ -7,6 +7,8 @@ generator client {
   engineType = "library"
 }
 
+
+
 model User {
   id           Int      @id @default(autoincrement())
   uuid         String   @unique @default(uuid())
@@ -16,6 +18,19 @@ model User {
   lastname     String  
   recentOnline DateTime @updatedAt
   createdAt    DateTime @default(now())
+  auditLogs    AuditLog[]
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    Int?     // ปรับตาม Type ของ User.id เดิมที่เป็น Int
+  action    String   // 'LOGIN_SUCCESS', 'LOGIN_FAILED', 'LOGOUT'
+  ipAddress String
+  userAgent String   
+  details   String?  // เก็บสาเหตุ เช่น 'รหัสผ่านไม่ถูกต้อง', 'ไม่พบอีเมลนี้'
+  createdAt DateTime @default(now())
+  // ผูกความสัมพันธ์กับตาราง User (เมื่อลบ User ไม่ให้ลบ Log ให้เปลี่ยน userId เป็น null แทน)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
 
 enum NewsType {

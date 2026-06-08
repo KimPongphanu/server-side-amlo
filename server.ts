@@ -1,11 +1,15 @@
 // server.ts
-import 'dotenv/config'
-import express, { Express, Request, Response } from 'express'
-import path from 'path'
-
 import cookieParser from 'cookie-parser'
 import cors from 'cors'
+import 'dotenv/config'
+import express, { Express, Request, Response } from 'express'
+import cron from 'node-cron' // 🌟 นำเข้า node-cron เข้ามาจัดการรอบเวลาทำงานเบื้องหลัง
+import path from 'path'
+import { globalErrorHandler } from './middlewares/errorHandler'
+
+import prisma from './lib/prisma' // 🌟 นำเข้า prisma client เพื่อสั่งคำสั่งลบข้อมูลโดยตรง
 import { apiLimiter } from './middlewares/rateLimiter'
+import auditRoutes from './routes/auditRoute'
 import authRoutes from './routes/authRoute'
 import commentRoutes from './routes/commentRoute'
 import contactRoutes from './routes/contactRoute'
@@ -41,9 +45,32 @@ app.use('/api/departments', departmentRoutes)
 app.use('/api/files', fileRoutes)
 app.use('/api/contact', contactRoutes)
 app.use('/api/comments', commentRoutes)
+app.use('/api/audit', auditRoutes)
 
 app.get('/', (req: Request, res: Response) => {
   res.send('Server is running with TypeScript!')
+})
+
+app.use(globalErrorHandler)
+
+// ── 4. กลไกลบ Audit Log อัตโนมัติ (Data Retention Policy) ──
+// ตั้งค่ารันทำงานโดยอัตโนมัติในทุกๆ วันเวลาเที่ยงคืนตรง (00:00)
+cron.schedule('0 0 * * *', async () => {
+  try {
+    const cutOffDate = new Date()
+    cutOffDate.setDate(cutOffDate.getDate() - 90) // คำนวณช่วงเวลาถอยหลังย้อนหลัง 90 วัน
+
+    const result = await prisma.auditLog.deleteMany({
+      where: {
+        createdAt: { lt: cutOffDate }, // สั่งลบแถวบันทึกที่มีอายุเก่ากว่าช่วงวันที่กำหนด
+      },
+    })
+    console.log(
+      `[Cron Job] Expired audit logs cleaned successfully. Deleted ${result.count} rows.`,
+    )
+  } catch (error) {
+    console.error('[Cron Job Error] Failed to clean expired audit logs:', error)
+  }
 })
 
 app.listen(port, () => {
