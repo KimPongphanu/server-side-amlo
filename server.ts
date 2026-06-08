@@ -26,10 +26,18 @@ app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(cookieParser())
 
+const allowedOrigins = ['http://localhost:5173', 'http://172.20.10.3:5173'] // ตัวอย่าง
+
 app.use(
   cors({
-    origin: 'http://localhost:5173', // โดเมนของ Frontend
-    credentials: true, // เปิดรองรับการส่ง Cookie ยืนยันตัวตน
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true)
+      } else {
+        callback(new Error('Not allowed by CORS'))
+      }
+    },
+    credentials: true,
   }),
 )
 

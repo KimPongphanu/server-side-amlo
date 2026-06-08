@@ -21,6 +21,12 @@ model User {
   auditLogs    AuditLog[]
 }
 
+model JwtBlacklist {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  createdAt DateTime @default(now())
+}
+
 model AuditLog {
   id        String   @id @default(uuid())
   userId    Int?     // ปรับตาม Type ของ User.id เดิมที่เป็น Int
