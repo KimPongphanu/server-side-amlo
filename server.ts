@@ -27,7 +27,11 @@ app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(cookieParser())
 
-const allowedOrigins = ['http://localhost:5173', 'http://172.20.10.3:5173'] // ตัวอย่าง
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://10.89.163.40:5173',
+] // ตัวอย่าง
 
 app.use(
   cors({
@@ -83,6 +87,8 @@ cron.schedule('0 0 * * *', async () => {
   }
 })
 
-app.listen(port, () => {
-  console.log(`Server is running at http://localhost:${port}`)
+const PORT: number = Number(process.env.PORT) || 8080
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Backend Server is running on port ${PORT}`)
 })
