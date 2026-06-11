@@ -6,13 +6,12 @@ export interface AuthRequest extends Request {
   user?: any
 }
 
-const authMiddleware = (
+export const authMiddleware = (
   req: AuthRequest,
   res: Response,
   next: NextFunction,
 ): any => {
   try {
-    // 🔒 เปลี่ยนจากดักอ่าน Authorization Header มาอ่านจาก cookie-parser แทน
     const token = req.cookies.token
 
     if (!token) {
@@ -29,11 +28,26 @@ const authMiddleware = (
     }
 
     const decoded = jwt.verify(token, secret)
-    req.user = decoded
+    req.user = decoded // ใน decoded จะมีฟิลด์ role ที่เราฝังไว้จากตอน Login
 
     next()
   } catch (error) {
-    res.status(401).json({ message: 'Invalid Token' })
+    return res.status(401).json({ message: 'Invalid Token' })
+  }
+}
+
+// 🌟 เพิ่มฟังก์ชันนี้เพื่อดักสิทธิ์ Role (เช่น 'ADMIN')
+export const restrictTo = (...allowedRoles: string[]) => {
+  return (req: AuthRequest, res: Response, next: NextFunction): void => {
+    // ตรวจสอบว่ามีข้อมูล user และ role ตรงกับสิทธิ์ที่อนุญาตหรือไม่
+    if (!req.user || !allowedRoles.includes(req.user.role)) {
+      res.status(403).json({
+        success: false,
+        message: 'คุณไม่มีสิทธิ์เข้าถึงหรือทำรายการในส่วนนี้ (Forbidden)',
+      })
+      return
+    }
+    next()
   }
 }
 
