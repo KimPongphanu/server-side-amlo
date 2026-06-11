@@ -9,6 +9,11 @@ generator client {
 
 
 
+enum Role {
+  USER
+  ADMIN
+}
+
 model User {
   id           Int      @id @default(autoincrement())
   uuid         String   @unique @default(uuid())
@@ -16,6 +21,10 @@ model User {
   password     String
   firstname    String   
   lastname     String  
+  
+  // 2. เพิ่มฟิลด์ role และกำหนดค่าเริ่มต้นเป็น Role.USER (หรือใส่เป็น "USER" หากใช้แบบ String ปกติ)
+  role         Role     @default(USER) 
+  
   recentOnline DateTime @updatedAt
   createdAt    DateTime @default(now())
   auditLogs    AuditLog[]

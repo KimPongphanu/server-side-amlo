@@ -2,11 +2,12 @@
 import { Router } from 'express'
 import {
   getMe,
+  getUsers,
   loginUser,
   logoutUser,
   registerUser,
 } from '../controllers/authController'
-import auth from '../middlewares/auth'
+import auth, { restrictTo } from '../middlewares/auth' // 🌟 นำเข้า restrictTo เพิ่มเข้ามา
 import { loginLimiter, registerLimiter } from '../middlewares/rateLimiter'
 
 const router = Router()
@@ -15,7 +16,13 @@ const router = Router()
  * @ROUTE   POST /api/auth/register
  * @DESC    Register a new admin user
  */
-router.post('/register', registerLimiter, registerUser)
+router.post(
+  '/register',
+  auth,
+  restrictTo('ADMIN'),
+  registerLimiter,
+  registerUser,
+)
 
 /**
  * @ROUTE   POST /api/auth/login
@@ -34,5 +41,8 @@ router.post('/logout', auth, logoutUser)
  * @DESC    Get current user profile
  */
 router.get('/me', auth, getMe)
+
+// 🌟 แก้ไขจุดนี้: ใส่ auth เพื่อตรวจ token และ restrictTo('ADMIN') เพื่อให้เฉพาะแอดมินดูรายชื่อผู้ใช้ได้
+router.get('/users', auth, restrictTo('ADMIN'), getUsers)
 
 export default router

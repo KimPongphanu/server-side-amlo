@@ -54,6 +54,8 @@ export const registerUser = asyncHandler(
 
     // 3. Hash password and save user
     const hashedPassword = await bcrypt.hash(password, 10)
+
+    // ป้องกัน Mass Assignment โดยใส่เฉพาะฟิลด์ที่อนุญาต (role ปล่อยเป็นค่าเริ่มต้น USER จาก Schema)
     const user = await prisma.user.create({
       data: { email, password: hashedPassword, firstname, lastname },
     })
@@ -92,13 +94,14 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
   const secret = process.env.JWT_SECRET
   if (!secret) throw new Error('Server configuration error.')
 
-  // Generate JWT Token
+  // Generate JWT Token (สามารถแนบ role ลงไปใน token ได้เพื่อการเช็คฝั่ง Client)
   const token = jwt.sign(
     {
       uuid: user.uuid,
       email: user.email,
       firstName: user.firstname,
       lastName: user.lastname,
+      role: user.role, // <-- แก้ไขให้ใช้สิทธิ์จากฐานข้อมูลจริง
     },
     secret,
     { expiresIn: '1d' },
@@ -123,7 +126,7 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
       email: user.email,
       firstname: user.firstname,
       lastname: user.lastname,
-      role: 'Admin',
+      role: user.role, // <-- แก้ไขให้ดึงสิทธิ์จากฐานข้อมูลจริง ไม่ Hardcode 'Admin'
     },
   })
 })
@@ -165,6 +168,7 @@ export const getMe = asyncHandler(async (req: AuthRequest, res: Response) => {
       email: true,
       firstname: true,
       lastname: true,
+      role: true, // <-- ดึงฟิลด์ role ออกมาจาก DB
       createdAt: true,
       recentOnline: true,
     },
@@ -177,6 +181,31 @@ export const getMe = asyncHandler(async (req: AuthRequest, res: Response) => {
 
   res.status(200).json({
     success: true,
-    user: { ...user, role: 'Admin' },
+    user: user, // <-- ส่งตัวแปร user ตรงๆ โดยไม่ต้อง Hardcode ครอบทับสิทธิ์อีกรอบ
   })
 })
+
+export const getUsers = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        uuid: true,
+        firstname: true, // <-- แก้ไขจาก username เป็น firstname เพื่อให้ตรงกับ Schema
+        lastname: true, // <-- ดึงนามสกุลมาแสดงผลคู่กัน
+        email: true,
+        role: true, // <-- ดึงสิทธิ์ที่พึ่งอัปเดตจาก DB ออกมาใช้งาน
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    })
+
+    res.status(200).json({
+      success: true,
+      count: users.length,
+      data: users,
+    })
+  },
+)
