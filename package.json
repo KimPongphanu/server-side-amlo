@@ -12,7 +12,7 @@
     "migrate:deploy": "npx prisma migrate deploy",
     "prisma:generate": "npx prisma generate",
     "prisma:studio": "npx prisma studio",
-    "seed": "npx prisma db seed"
+    "seed": "tsx prisma/seed.ts"
   },
   "keywords": [],
   "author": "",
@@ -40,7 +40,7 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.1.0",
-    "@types/node": "^25.9.1",
+    "@types/node": "^25.9.3",
     "@types/node-cron": "^3.0.11",
     "dotenv": "^17.4.2",
     "prisma": "^7.8.0",

@@ -1,40 +1,50 @@
-//เวลาต้องการหยอดข้อมูลเข้า Database ให้เปิด Terminal แล้วพิมพ์คำสั่งนี้
-//npx prisma db seed
 // prisma/seed.ts
+import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import 'dotenv/config' // ✅ ต้องมีบรรทัดนี้ไว้ด้านบนสุด
+import { Pool } from 'pg'
 
-const prisma = new PrismaClient()
+// ✅ ตรวจสอบ DATABASE_URL
+const connectionString = process.env.DATABASE_URL
+
+if (!connectionString) {
+  console.error('❌ DATABASE_URL is not defined in environment variables')
+  console.error('Please create a .env file with DATABASE_URL=postgresql://...')
+  process.exit(1)
+}
+
+const pool = new Pool({ connectionString })
+const adapter = new PrismaPg(pool)
+const prisma = new PrismaClient({ adapter })
 
 async function main() {
   console.log('🌱 Starting seeding...')
 
-  // 1. ตรวจสอบก่อนว่ามี Admin ในระบบหรือยัง เพื่อไม่ให้ข้อมูลซ้ำซ้อน
   const adminExists = await prisma.user.findFirst({
     where: { role: 'ADMIN' },
   })
 
   if (!adminExists) {
-    // 2. Hash รหัสผ่านสำหรับ Admin คนแรก
     const hashedPassword = await bcrypt.hash('SuperSecurePassword123!', 10)
 
-    // 3. ยิงข้อมูลเข้าฐานข้อมูล
     const rootAdmin = await prisma.user.create({
       data: {
-        email: 'rootadmin@amlo.go.th', // อีเมลสำหรับ Login ตัวแรก
+        email: 'rootadmin@amlo.go.th',
         password: hashedPassword,
         firstname: 'System',
         lastname: 'Administrator',
-        role: 'ADMIN', // กำหนดสิทธิ์เป็น ADMIN
+        role: 'ADMIN',
       },
     })
 
-    console.log(`Root Admin created: ${rootAdmin.email}`)
+    console.log(`✅ Root Admin created: ${rootAdmin.email}`)
+    console.log(`   Password: SuperSecurePassword123!`)
   } else {
-    console.log('Admin already exists. Skipping...')
+    console.log('⚠️ Admin already exists. Skipping...')
   }
 
-  console.log('Seeding finished.')
+  console.log('🌱 Seeding finished.')
 }
 
 main()
@@ -42,7 +52,7 @@ main()
     await prisma.$disconnect()
   })
   .catch(async (e) => {
-    console.error(e)
+    console.error('❌ Seeding failed:', e)
     await prisma.$disconnect()
     process.exit(1)
   })
