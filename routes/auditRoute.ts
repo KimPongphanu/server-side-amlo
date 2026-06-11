@@ -10,10 +10,12 @@ router.get(
   '/',
   auth,
   asyncHandler(async (req: Request, res: Response) => {
-    // ดักสิทธิ์ ADMIN (ถ้ามีระบบ Role)
+    const userId = req.query.userId ? Number(req.query.userId) : undefined
+
     const logs = await prisma.auditLog.findMany({
+      where: userId ? { userId } : undefined,
       orderBy: { createdAt: 'desc' },
-      take: 100, // ดึงมาแสดง 100 รายการล่าสุดก่อนเพื่อความเร็ว
+      take: 100, // ดึงมาแสดง 100 รายการล่าสุด
     })
     res.status(200).json({ success: true, data: logs })
   }),

@@ -26,11 +26,11 @@ async function main() {
   })
 
   if (!adminExists) {
-    const hashedPassword = await bcrypt.hash('SuperSecurePassword123!', 10)
+    const hashedPassword = await bcrypt.hash('1234', 10)
 
     const rootAdmin = await prisma.user.create({
       data: {
-        email: 'rootadmin@amlo.go.th',
+        email: 'test@gmail.com',
         password: hashedPassword,
         firstname: 'System',
         lastname: 'Administrator',
@@ -39,7 +39,6 @@ async function main() {
     })
 
     console.log(`✅ Root Admin created: ${rootAdmin.email}`)
-    console.log(`   Password: SuperSecurePassword123!`)
   } else {
     console.log('⚠️ Admin already exists. Skipping...')
   }

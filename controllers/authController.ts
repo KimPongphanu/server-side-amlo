@@ -191,11 +191,12 @@ export const getUsers = asyncHandler(
       select: {
         id: true,
         uuid: true,
-        firstname: true, // <-- แก้ไขจาก username เป็น firstname เพื่อให้ตรงกับ Schema
-        lastname: true, // <-- ดึงนามสกุลมาแสดงผลคู่กัน
+        firstname: true,
+        lastname: true,
         email: true,
-        role: true, // <-- ดึงสิทธิ์ที่พึ่งอัปเดตจาก DB ออกมาใช้งาน
+        role: true,
         createdAt: true,
+        recentOnline: true, // <-- เพิ่มเพื่อให้หน้าบ้านคำนวณสถานะ Online/Offline ได้
       },
       orderBy: {
         createdAt: 'desc',
@@ -207,5 +208,24 @@ export const getUsers = asyncHandler(
       count: users.length,
       data: users,
     })
+  },
+)
+
+/**
+ * @ROUTE   POST /api/auth/heartbeat
+ * @DESC    อัปเดตเวลา recentOnline ของ User เพื่อบอกว่ายังออนไลน์อยู่ (ยิงทุก 5 นาทีจาก Frontend)
+ * @ACCESS  Private (ต้องมี JWT Token ที่ถูกต้อง)
+ */
+export const heartbeat = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    // ใช้ prisma.user.update เพื่อ trigger @updatedAt บน recentOnline โดยอัตโนมัติ
+    // data: {} ไม่ต้องส่งค่าอะไร Prisma จะ set recentOnline = NOW() ให้เองจาก @updatedAt
+    await prisma.user.update({
+      where: { uuid: req.user.uuid },
+      data: { recentOnline: new Date() },
+      select: { id: true }, // select แค่ id เพื่อประหยัด DB bandwidth
+    })
+
+    res.status(200).json({ ok: true })
   },
 )
