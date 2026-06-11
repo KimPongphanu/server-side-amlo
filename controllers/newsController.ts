@@ -57,9 +57,14 @@ export const getNews = asyncHandler(async (req: Request, res: Response) => {
   const page = parseInt(String(req.query.page)) || 1
   const limit = parseInt(String(req.query.limit)) || 10
   const type = String(req.query.type)
+  const isAll = req.query.all === 'true'
   const skip = (page - 1) * limit
 
-  const whereCondition: any = { isShow: true }
+  const whereCondition: any = {}
+  
+  if (!isAll) {
+    whereCondition.isShow = true
+  }
 
   if (type === 'PR' || type === 'NEWS') {
     whereCondition.type = type
@@ -94,7 +99,7 @@ export const updateNews = asyncHandler(
       return
     }
 
-    const { title, description, content } = req.body
+    const { title, description, content, isShow, views, type, date } = req.body
 
     const oldNews = await prisma.news.findUnique({ where: { id } })
     if (!oldNews) {
@@ -108,15 +113,23 @@ export const updateNews = asyncHandler(
     const sanitizedContent = content ? DOMPurify.sanitize(content) : null
 
     const updateData: {
-      title: string
-      description: string
-      content: string | null
+      title?: string
+      description?: string
+      content?: string | null
       image_src?: string
-    } = {
-      title,
-      description,
-      content: sanitizedContent,
-    }
+      isShow?: boolean
+      views?: number
+      type?: 'NEWS' | 'PR'
+      date?: Date
+    } = {}
+
+    if (title !== undefined) updateData.title = title
+    if (description !== undefined) updateData.description = description
+    if (content !== undefined) updateData.content = sanitizedContent
+    if (isShow !== undefined) updateData.isShow = isShow === 'true' || isShow === true
+    if (views !== undefined) updateData.views = parseInt(views)
+    if (type !== undefined) updateData.type = type
+    if (date !== undefined) updateData.date = new Date(date)
 
     if (req.file) {
       updateData.image_src = `/uploads/${req.file.filename}`
