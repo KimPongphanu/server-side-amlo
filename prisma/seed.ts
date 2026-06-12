@@ -2,14 +2,14 @@
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
-import 'dotenv/config' // ✅ ต้องมีบรรทัดนี้ไว้ด้านบนสุด
+import crypto from 'crypto'
+import 'dotenv/config'
 import { Pool } from 'pg'
 
-// ✅ ตรวจสอบ DATABASE_URL
 const connectionString = process.env.DATABASE_URL
 
 if (!connectionString) {
-  console.error('❌ DATABASE_URL is not defined in environment variables')
+  console.error('DATABASE_URL is not defined in environment variables')
   console.error('Please create a .env file with DATABASE_URL=postgresql://...')
   process.exit(1)
 }
@@ -18,32 +18,93 @@ const pool = new Pool({ connectionString })
 const adapter = new PrismaPg(pool)
 const prisma = new PrismaClient({ adapter })
 
-async function main() {
-  console.log('🌱 Starting seeding...')
+function generateRecoveryKeys(): string[] {
+  const keys: string[] = []
+  for (let i = 0; i < 10; i++) {
+    keys.push(crypto.randomBytes(8).toString('hex').toUpperCase())
+  }
+  return keys
+}
 
-  const adminExists = await prisma.user.findFirst({
-    where: { role: 'ADMIN' },
+async function main() {
+  console.log('Starting seeding...')
+
+  const supervisorExists = await prisma.user.findFirst({
+    where: { role: 'SUPERVISOR' as const },
   })
 
-  if (!adminExists) {
-    const hashedPassword = await bcrypt.hash('1234', 10)
+  if (!supervisorExists) {
+    const hashedPassword = await bcrypt.hash('SuperSecurePassword123!@#', 12)
 
-    const rootAdmin = await prisma.user.create({
+    const recoveryKeyStrings = generateRecoveryKeys()
+
+    const rootSupervisor = await prisma.user.create({
       data: {
-        email: 'test@gmail.com',
+        email: 'supervisor@amlo.go.th',
         password: hashedPassword,
         firstname: 'System',
-        lastname: 'Administrator',
-        role: 'ADMIN',
+        lastname: 'Supervisor',
+        role: 'SUPERVISOR' as const,
+        twoFactorMethod: 'NONE' as const,
+        twoFactorEnabled: false,
       },
     })
 
-    console.log(`✅ Root Admin created: ${rootAdmin.email}`)
+    for (const keyString of recoveryKeyStrings) {
+      const keyHash = await bcrypt.hash(keyString, 12)
+      const expiresAt = new Date()
+      expiresAt.setFullYear(expiresAt.getFullYear() + 1)
+
+      await prisma.recoveryKey.create({
+        data: {
+          userId: rootSupervisor.id,
+          keyHash: keyHash,
+          expiresAt: expiresAt,
+        },
+      })
+    }
+
+    console.log('Supervisor created:')
+    console.log(`  Email: supervisor@amlo.go.th`)
+    console.log(`  Password: SuperSecurePassword123!@#`)
+    console.log(`  Recovery Keys (SAVE THESE NOW):`)
+    recoveryKeyStrings.forEach((key, idx) => {
+      console.log(`    ${idx + 1}. ${key}`)
+    })
+    console.log('')
+    console.log('IMPORTANT: These recovery keys are shown only once.')
+    console.log('Print and store them in a secure location.')
   } else {
-    console.log('⚠️ Admin already exists. Skipping...')
+    console.log('Supervisor already exists. Skipping...')
   }
 
-  console.log('🌱 Seeding finished.')
+  const adminExists = await prisma.user.findFirst({
+    where: { role: 'ADMIN' as const },
+  })
+
+  if (!adminExists) {
+    const hashedPassword = await bcrypt.hash('AdminPassword123!', 12)
+
+    await prisma.user.create({
+      data: {
+        email: 'admin@amlo.go.th',
+        password: hashedPassword,
+        firstname: 'System',
+        lastname: 'Admin',
+        role: 'ADMIN' as const,
+        twoFactorMethod: 'NONE' as const,
+        twoFactorEnabled: false,
+      },
+    })
+
+    console.log('Default Admin created:')
+    console.log(`  Email: admin@amlo.go.th`)
+    console.log(`  Password: AdminPassword123!`)
+  } else {
+    console.log('Admin already exists. Skipping...')
+  }
+
+  console.log('Seeding finished.')
 }
 
 main()
@@ -51,7 +112,7 @@ main()
     await prisma.$disconnect()
   })
   .catch(async (e) => {
-    console.error('❌ Seeding failed:', e)
+    console.error('Seeding failed:', e)
     await prisma.$disconnect()
     process.exit(1)
   })

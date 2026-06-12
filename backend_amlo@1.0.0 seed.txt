@@ -1,0 +1,25 @@
+> backend_amlo@1.0.0 seed
+> tsx prisma/seed.ts
+
+Starting seeding...
+Supervisor created:
+  Email: supervisor@amlo.go.th
+  Password: SuperSecurePassword123!@#
+  Recovery Keys (SAVE THESE NOW):
+    1. 861721B0CC2998A2
+    2. B0F56A090914B192
+    3. A11DB6468772ED87
+    4. 2EC7C233BE19DE4F
+    5. 6333D6DAC1D149CB
+    6. E1221D6DEEC325C7
+    7. 0530271AC5CEAD38
+    8. B021E893406967AD
+    9. 7EC96DF71853AAFE
+    10. A9B9AE48C0E7062F
+
+IMPORTANT: These recovery keys are shown only once.
+Print and store them in a secure location.
+Default Admin created:
+  Email: admin@amlo.go.th
+  Password: AdminPassword123!
+Seeding finished.

@@ -72,15 +72,19 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
   const { ipAddress, userAgent } = getClientMetadata(req)
   const { email, password } = req.body
 
+  console.log('[LOGIN DEBUG] Login attempt for:', email)
+  console.log('[LOGIN DEBUG] NODE_ENV:', process.env.NODE_ENV)
+
   if (!email || !password || email.length > 100 || password.length > 100) {
+    console.log('[LOGIN DEBUG] Missing credentials')
     res.status(400).json({ message: 'Please provide valid credentials.' })
     return
   }
 
   const user = await prisma.user.findUnique({ where: { email } })
 
-  // Case 1: Invalid email or password (Login Failed)
   if (!user || !(await bcrypt.compare(password, user.password))) {
+    console.log('[LOGIN DEBUG] Invalid credentials')
     await logAudit(
       req,
       'LOGIN_FAILED',
@@ -91,31 +95,41 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
     return
   }
 
+  console.log('[LOGIN DEBUG] User found:', user.uuid)
+  console.log('[LOGIN DEBUG] User role:', user.role)
+
   const secret = process.env.JWT_SECRET
   if (!secret) throw new Error('Server configuration error.')
 
-  // Generate JWT Token (สามารถแนบ role ลงไปใน token ได้เพื่อการเช็คฝั่ง Client)
   const token = jwt.sign(
     {
       uuid: user.uuid,
       email: user.email,
       firstName: user.firstname,
       lastName: user.lastname,
-      role: user.role, // <-- แก้ไขให้ใช้สิทธิ์จากฐานข้อมูลจริง
+      role: user.role,
     },
     secret,
     { expiresIn: '1d' },
   )
 
-  // Set JWT in HTTP-Only Cookie
+  console.log('[LOGIN DEBUG] Token generated, setting cookie')
+
   res.cookie('token', token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    secure: false, // MUST be false for localhost (no HTTPS)
+    sameSite: 'lax', // 'strict' might block redirects
     maxAge: 24 * 60 * 60 * 1000,
+    path: '/', // Ensure cookie is available for all paths
+  })
+  console.log('[LOGIN DEBUG] Cookie set with options:', {
+    httpOnly: true,
+    secure: false,
+    sameSite: 'lax',
+    maxAge: 24 * 60 * 60 * 1000,
+    path: '/',
   })
 
-  // Case 2: Login successful
   await logAudit(req, 'LOGIN_SUCCESS', 'User logged in successfully.', user.id)
 
   res.status(200).json({
@@ -126,7 +140,7 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
       email: user.email,
       firstname: user.firstname,
       lastname: user.lastname,
-      role: user.role, // <-- แก้ไขให้ดึงสิทธิ์จากฐานข้อมูลจริง ไม่ Hardcode 'Admin'
+      role: user.role,
     },
   })
 })

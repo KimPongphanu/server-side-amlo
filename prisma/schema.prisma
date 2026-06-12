@@ -1,3 +1,4 @@
+// prisma/schema.prisma
 datasource db {
   provider = "postgresql"
 }
@@ -7,45 +8,105 @@ generator client {
   engineType = "library"
 }
 
-
-
 enum Role {
   USER
   ADMIN
+  SUPERVISOR
+}
+
+enum TwoFactorMethod {
+  NONE
+  AUTHENTICATOR
+  EMAIL_OTP
 }
 
 model User {
-  id           Int      @id @default(autoincrement())
-  uuid         String   @unique @default(uuid())
-  email        String   @unique
-  password     String
-  firstname    String   
-  lastname     String  
+  id                Int              @id @default(autoincrement())
+  uuid              String           @unique @default(uuid())
+  email             String           @unique
+  password          String
+  firstname         String
+  lastname          String
+  role              Role             @default(USER)
   
-  // 2. เพิ่มฟิลด์ role และกำหนดค่าเริ่มต้นเป็น Role.USER (หรือใส่เป็น "USER" หากใช้แบบ String ปกติ)
-  role         Role     @default(USER) 
+  twoFactorMethod   TwoFactorMethod  @default(NONE)
+  twoFactorSecret   String?
+  twoFactorEnabled  Boolean          @default(false)
   
-  recentOnline DateTime @updatedAt
+  recentOnline      DateTime         @updatedAt
+  createdAt         DateTime         @default(now())
+  
+  recoveryKeys      RecoveryKey[]
+  sessions          Session[]
+  passwordHistory   PasswordHistory[]
+  auditLogs         AuditLog[]
+  failedAttempts    FailedLoginAttempt[]
+
+  status        String   @default("Active")
+}
+
+model RecoveryKey {
+  id        String   @id @default(uuid())
+  userId    Int
+  keyHash   String
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       Int
+  tokenHash    String   @unique
+  ipAddress    String
+  userAgent    String
+  lastActiveAt DateTime @default(now())
+  expiresAt    DateTime
   createdAt    DateTime @default(now())
-  auditLogs    AuditLog[]
+  
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PasswordHistory {
+  id           String   @id @default(uuid())
+  userId       Int
+  passwordHash String
+  createdAt    DateTime @default(now())
+  
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model FailedLoginAttempt {
+  id           String   @id @default(uuid())
+  email        String
+  ipAddress    String
+  attempts     Int      @default(1)
+  lastAttempt  DateTime @default(now())
+  lockedUntil  DateTime?
+  
+  // Add opposite relation field to fix the error
+  user         User?    @relation(fields: [userId], references: [id])
+  userId       Int?
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    Int?
+  action    String
+  ipAddress String
+  userAgent String
+  details   String?
+  createdAt DateTime @default(now())
+  
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
 
 model JwtBlacklist {
   id        String   @id @default(uuid())
   token     String   @unique
   createdAt DateTime @default(now())
-}
-
-model AuditLog {
-  id        String   @id @default(uuid())
-  userId    Int?     // ปรับตาม Type ของ User.id เดิมที่เป็น Int
-  action    String   // 'LOGIN_SUCCESS', 'LOGIN_FAILED', 'LOGOUT'
-  ipAddress String
-  userAgent String   
-  details   String?  // เก็บสาเหตุ เช่น 'รหัสผ่านไม่ถูกต้อง', 'ไม่พบอีเมลนี้'
-  createdAt DateTime @default(now())
-  // ผูกความสัมพันธ์กับตาราง User (เมื่อลบ User ไม่ให้ลบ Log ให้เปลี่ยน userId เป็น null แทน)
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
 
 enum NewsType {
@@ -70,7 +131,6 @@ model News {
   isShow      Boolean  @default(true)
 }
 
-// 2. ความสัมพันธ์แบบ One-to-Many (1 Department มีได้หลาย GalleryItem)
 model Department {
   id          Int           @id @default(autoincrement())
   title       String
@@ -97,22 +157,21 @@ model ContactRequest {
   preferredContact String   @map("preferred_contact")
   message          String   @db.Text
   status           String   @default("ยังไม่ตอบกลับ")
-  createdAt        DateTime @default(now()) @map("created_at") 
-  // 🌟 เพิ่มฟิลด์นี้เข้าไปครับ
+  createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  @@map("contact_requests") 
+  @@map("contact_requests")
 }
 
 model CommentItem {
   id        String   @id @default(uuid())
-  star      Int      // คะแนนความพึงพอใจ 1-5
-  msg       String   @db.Text // รองรับข้อความยาวสูงสุด 500 ตัวอักษร
-  isShow    Boolean  @default(false) // สถานะการเปิด/ปิดการแสดงผลบนหน้าเว็บ
+  star      Int
+  msg       String   @db.Text
+  isShow    Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@map("comment_items") // ตั้งชื่อ table ในฐานข้อมูลเป็นตัวพิมพ์เล็กแบบ Snake Case
+  @@map("comment_items")
 }
 
 model SliderImage {

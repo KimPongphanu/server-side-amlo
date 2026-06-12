@@ -9,6 +9,7 @@ import { globalErrorHandler } from './middlewares/errorHandler'
 
 import prisma from './lib/prisma' // 🌟 นำเข้า prisma client เพื่อสั่งคำสั่งลบข้อมูลโดยตรง
 import { apiLimiter } from './middlewares/rateLimiter'
+import adminUserRoutes from './routes/adminUserRoute'
 import auditRoutes from './routes/auditRoute'
 import authRoutes from './routes/authRoute'
 import commentRoutes from './routes/commentRoute'
@@ -17,6 +18,7 @@ import departmentRoutes from './routes/departmentRoute'
 import fileRoutes from './routes/fileRoute'
 import newsRoutes from './routes/newsRoute'
 import sliderRoutes from './routes/sliderRoute'
+import twoFactorRoutes from './routes/twoFactorRoute'
 import uploadRoutes from './routes/uploadRoute'
 
 const app: Express = express()
@@ -36,13 +38,22 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: (origin, callback) => {
+      const allowedOrigins = [
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+        'http://10.89.163.40:5173',
+      ]
+      console.log('[CORS] Request from origin:', origin)
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true)
       } else {
+        console.log('[CORS] Blocked origin:', origin)
         callback(new Error('Not allowed by CORS'))
       }
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'Accept'],
   }),
 )
 
@@ -60,6 +71,8 @@ app.use('/api/contact', contactRoutes)
 app.use('/api/comments', commentRoutes)
 app.use('/api/audit', auditRoutes)
 app.use('/api/slider', sliderRoutes)
+app.use('/api/admin/users', adminUserRoutes)
+app.use('/api/2fa', twoFactorRoutes)
 
 app.get('/', (req: Request, res: Response) => {
   res.send('Server is running with TypeScript!')
