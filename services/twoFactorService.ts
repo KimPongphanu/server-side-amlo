@@ -82,16 +82,15 @@ export const verifyEmailOTP = async (
 export const generateRecoveryKeys = async (
   userId: number,
 ): Promise<string[]> => {
-  const keys: string[] = []
   const recoveryKeyStrings: string[] = []
 
   for (let i = 0; i < 8; i++) {
     const key = crypto.randomBytes(8).toString('hex').toUpperCase()
     const formatted = `${key.slice(0, 4)}-${key.slice(4, 8)}-${key.slice(8, 12)}-${key.slice(12, 16)}`
-    keys.push(key)
     recoveryKeyStrings.push(formatted)
 
-    const hashedKey = crypto.createHash('sha256').update(key).digest('hex')
+    // Use bcrypt for consistency with seed.ts (which also uses bcrypt)
+    const hashedKey = await bcrypt.hash(key, 12)
     await prisma.recoveryKey.create({
       data: {
         userId,
@@ -120,23 +119,12 @@ export const verifyRecoveryKey = async (
     },
   })
 
-  // Seed uses bcrypt, runtime uses sha256 — try both
+  // All keys are now bcrypt-hashed (both seed and runtime) for consistency
   for (const record of records) {
-    // Try bcrypt compare (for seed-generated keys)
-    const isBcryptMatch = await bcrypt
+    const isMatch = await bcrypt
       .compare(rawKey, record.keyHash)
       .catch(() => false)
-    if (isBcryptMatch) {
-      await prisma.recoveryKey.update({
-        where: { id: record.id },
-        data: { usedAt: new Date() },
-      })
-      return true
-    }
-
-    // Try sha256 compare (for runtime-generated keys)
-    const shaHash = crypto.createHash('sha256').update(rawKey).digest('hex')
-    if (shaHash === record.keyHash) {
+    if (isMatch) {
       await prisma.recoveryKey.update({
         where: { id: record.id },
         data: { usedAt: new Date() },

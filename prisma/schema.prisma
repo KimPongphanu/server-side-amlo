@@ -33,7 +33,7 @@ model User {
 }
 
 model RecoveryKey {
-  id        String    @id
+  id        String    @id @default(uuid())
   userId    Int
   keyHash   String
   usedAt    DateTime?
@@ -55,7 +55,7 @@ model Session {
 }
 
 model PasswordHistory {
-  id           String   @id
+  id           String   @id @default(uuid())
   userId       Int
   passwordHash String
   createdAt    DateTime @default(now())
@@ -63,13 +63,13 @@ model PasswordHistory {
 }
 
 model JwtBlacklist {
-  id        String   @id
+  id        String   @id @default(uuid())
   token     String   @unique
   createdAt DateTime @default(now())
 }
 
 model AuditLog {
-  id        String   @id
+  id        String   @id @default(uuid())
   userId    Int?
   action    String
   ipAddress String
@@ -80,7 +80,7 @@ model AuditLog {
 }
 
 model FailedLoginAttempt {
-  id          String    @id
+  id          String    @id @default(uuid())
   email       String
   ipAddress   String
   attempts    Int       @default(1)
@@ -120,7 +120,7 @@ model News {
 }
 
 model comment_items {
-  id        String   @id
+  id        String   @id @default(uuid())
   star      Int
   msg       String
   isShow    Boolean  @default(false)
@@ -129,7 +129,7 @@ model comment_items {
 }
 
 model contact_requests {
-  id                String   @id
+  id                String   @id @default(uuid())
   first_name        String
   last_name         String
   email             String
@@ -142,7 +142,7 @@ model contact_requests {
 }
 
 model email_otps {
-  id        String   @id
+  id        String   @id @default(uuid())
   email     String
   otp       String
   used      Boolean  @default(false)
