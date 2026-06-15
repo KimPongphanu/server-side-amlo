@@ -635,6 +635,56 @@ export const heartbeat = asyncHandler(
 )
 
 /**
+ * @ROUTE   PUT /api/auth/me
+ * @DESC    Update current user's firstname and lastname
+ * @ACCESS  Authenticated (ADMIN or SUPERVISOR)
+ */
+export const updateMyProfile = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const { firstname, lastname } = req.body
+    const { ipAddress, userAgent } = getClientMetadata(req)
+
+    if (!firstname || !lastname) {
+      res.status(400).json({ message: 'กรุณากรอกชื่อและนามสกุล' })
+      return
+    }
+
+    if (firstname.length > 50 || lastname.length > 50) {
+      res.status(400).json({ message: 'ชื่อหรือนามสกุลยาวเกินไป' })
+      return
+    }
+
+    const updated = await prisma.user.update({
+      where: { uuid: req.user?.uuid },
+      select: {
+        uuid: true,
+        email: true,
+        firstname: true,
+        lastname: true,
+        role: true,
+      },
+      data: {
+        firstname: firstname.trim(),
+        lastname: lastname.trim(),
+      },
+    })
+
+    await logAudit(
+      req,
+      'UPDATE_PROFILE_SUCCESS',
+      `User ${updated.email} updated their profile`,
+      undefined,
+    )
+
+    res.status(200).json({
+      success: true,
+      message: 'อัปเดตข้อมูลส่วนตัวสำเร็จ',
+      data: updated,
+    })
+  },
+)
+
+/**
  * @ROUTE   POST /api/auth/users/:uuid/otp-action
  * @DESC    Supervisor uses own OTP (2FA) to unban another Supervisor
  * @ACCESS  Supervisor only (auth + requireSupervisor)
