@@ -10,6 +10,7 @@ import {
   logoutUser,
   registerUser,
   unbanUser,
+  updateMyProfile,
 } from '../controllers/authController'
 import {
   forceResetUserPassword,
@@ -46,6 +47,13 @@ router.post('/logout', auth, logoutUser)
  * @DESC    Get current user profile
  */
 router.get('/me', auth, getMe)
+
+/**
+ * @ROUTE   PUT /api/auth/me
+ * @DESC    Update current user profile (firstname, lastname)
+ * @ACCESS  Authenticated
+ */
+router.put('/me', auth, updateMyProfile)
 
 /**
  * @ROUTE   GET /api/auth/users
