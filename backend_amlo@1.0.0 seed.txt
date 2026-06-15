@@ -13,8 +13,20 @@ Supervisor created:
     9. 431AEB84FB2B7311
     10. D8C20B4B8354EE8B
 
+  Email: somying.rak@amlo.go.th
+  Password: P@ssw0rdSupervis0r
 IMPORTANT: These recovery keys are shown only once.
 Print and store them in a secure location.
 Default Admin created:
   Email: s6604062663183@email.kmutnb.ac.th
   Password: AdminPassword123!
+  Password: Test12345
+
+7538-B7FA-EAA8-81E0
+6148-D4CF-5296-7A93
+D423-D15B-DCCF-3B21
+5558-F10C-2036-AA9C
+66AC-6E89-9CF5-6C0E
+352A-4D52-27FB-5809
+3EFC-1386-0C9B-8563
+BC1D-E0AE-FFA5-F001

@@ -1,6 +1,7 @@
 // middlewares/auth.ts - ตรวจสอบ export
 import { NextFunction, Request, Response } from 'express'
 import jwt from 'jsonwebtoken'
+import prisma from '../lib/prisma'
 
 export interface AuthRequest extends Request {
   user?: {
@@ -45,6 +46,24 @@ export const authMiddleware = async (
       firstName: string
       lastName: string
       role: string
+    }
+
+    // 🌟 เช็คสถานะผู้ใช้จาก Database (ban / forcePasswordReset)
+    const user = await prisma.user.findUnique({
+      where: { uuid: decoded.uuid },
+      select: { status: true, forcePasswordReset: true },
+    })
+
+    if (!user) {
+      res.clearCookie('token')
+      res.status(401).json({ message: 'User account not found' })
+      return
+    }
+
+    if (user.status === 'Inactive') {
+      res.clearCookie('token')
+      res.status(401).json({ message: 'บัญชีนี้ถูกระงับการใช้งาน' })
+      return
     }
 
     req.user = decoded

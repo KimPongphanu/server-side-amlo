@@ -3,14 +3,17 @@ import { Router } from 'express'
 import {
   banUser,
   deleteUser,
+  forceLogoutUser,
   getMe,
   getUsers,
   heartbeat,
   loginUser,
   logoutUser,
   registerUser,
+  supervisorOTPAction,
   unbanUser,
 } from '../controllers/authController'
+import { emergencyAction } from '../controllers/emergencyController'
 import {
   forceResetUserPassword,
   resendForceResetOTP,
@@ -82,6 +85,37 @@ router.post('/heartbeat', auth, heartbeat)
  * @DESC    Reset password using OTP or reset token
  */
 router.post('/reset-password', resetPassword)
+
+/**
+ * @ROUTE   POST /api/auth/emergency-action
+ * @DESC    Supervisor uses recovery key to BAN/DELETE/FORCE_RESET another compromised Supervisor
+ * @ACCESS  Supervisor only
+ */
+router.post('/emergency-action', auth, requireSupervisor, emergencyAction)
+
+/**
+ * @ROUTE   POST /api/auth/users/:uuid/otp-action
+ * @DESC    Supervisor uses own OTP to unban another Supervisor
+ * @ACCESS  Supervisor only
+ */
+router.post(
+  '/users/:uuid/otp-action',
+  auth,
+  requireSupervisor,
+  supervisorOTPAction,
+)
+
+/**
+ * @ROUTE   POST /api/auth/users/:uuid/force-logout
+ * @DESC    Supervisor uses own OTP to force logout another user
+ * @ACCESS  Supervisor only
+ */
+router.post(
+  '/users/:uuid/force-logout',
+  auth,
+  requireSupervisor,
+  forceLogoutUser,
+)
 
 // ──────────────────────────────────────────────────────
 // SUPERVISOR FORCE RESET PASSWORD ROUTES

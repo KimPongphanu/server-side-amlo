@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs'
 import { Request, Response } from 'express'
 import asyncHandler from 'express-async-handler'
 import jwt from 'jsonwebtoken'
+import speakeasy from 'speakeasy'
 import prisma from '../lib/prisma'
 import { AuthRequest } from '../middlewares/auth'
 import {
@@ -630,5 +631,189 @@ export const heartbeat = asyncHandler(
     })
 
     res.status(200).json({ ok: true })
+  },
+)
+
+/**
+ * @ROUTE   POST /api/auth/users/:uuid/otp-action
+ * @DESC    Supervisor uses own OTP (2FA) to unban another Supervisor
+ * @ACCESS  Supervisor only (auth + requireSupervisor)
+ */
+export const supervisorOTPAction = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const { uuid } = req.params
+    const { otpToken, reason } = req.body
+    const { ipAddress, userAgent } = getClientMetadata(req)
+
+    if (!otpToken || !reason || !reason.trim()) {
+      res.status(400).json({ message: 'กรุณากรอก OTP และเหตุผล' })
+      return
+    }
+
+    // 1. Get current user (requester)
+    const requester = await prisma.user.findUnique({
+      where: { uuid: req.user?.uuid },
+    })
+
+    if (!requester || requester.role !== 'SUPERVISOR') {
+      res.status(403).json({ message: 'เฉพาะ Supervisor เท่านั้น' })
+      return
+    }
+
+    // 2. Get target user (must be SUPERVISOR)
+    const target = await prisma.user.findUnique({
+      where: { uuid },
+    })
+
+    if (!target || target.role !== 'SUPERVISOR') {
+      res.status(404).json({ message: 'ไม่พบบัญชี Supervisor เป้าหมาย' })
+      return
+    }
+
+    if (target.uuid === requester.uuid) {
+      res.status(400).json({ message: 'ไม่สามารถดำเนินการกับตนเองได้' })
+      return
+    }
+
+    // 3. Check target is banned (only unban allowed)
+    if (target.status !== 'Inactive') {
+      res.status(400).json({ message: 'สมาชิกนี้ยังไม่ได้ถูกระงับ' })
+      return
+    }
+
+    // 4. Verify OTP of the REQUESTER (current user)
+    if (!requester.twoFactorSecret) {
+      res.status(400).json({ message: 'คุณยังไม่ได้ตั้งค่า 2FA' })
+      return
+    }
+
+    const isValidOTP = speakeasy.totp.verify({
+      secret: requester.twoFactorSecret,
+      encoding: 'base32',
+      token: otpToken,
+      window: 1,
+    })
+
+    if (!isValidOTP) {
+      await logAudit(
+        req,
+        'OTP_ACTION_FAILED',
+        `Supervisor ${requester.email} attempted to unban ${target.email} but OTP was invalid`,
+        requester.id,
+      )
+      res.status(400).json({ message: 'รหัส OTP ไม่ถูกต้อง' })
+      return
+    }
+
+    // 5. Execute unban
+    await prisma.user.update({
+      where: { id: target.id },
+      data: { status: 'Active' },
+    })
+
+    // 6. Revoke all sessions of target (force logout)
+    await revokeAllUserSessions(target.id)
+
+    await logAudit(
+      req,
+      'OTP_ACTION_UNBAN_SUCCESS',
+      `Supervisor ${requester.email} unbanned ${target.email} via OTP. Reason: ${reason}`,
+      requester.id,
+    )
+
+    res.status(200).json({
+      success: true,
+      message: 'ปลดระงับการใช้งานสำเร็จ',
+      data: {
+        action: 'unban',
+        target: target.email,
+      },
+    })
+  },
+)
+
+/**
+ * @ROUTE   POST /api/auth/users/:uuid/force-logout
+ * @DESC    Supervisor uses own OTP to force logout another user by revoking all sessions
+ * @ACCESS  Supervisor only (auth + requireSupervisor)
+ */
+export const forceLogoutUser = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const { uuid } = req.params
+    const { otpToken, reason } = req.body
+    const { ipAddress, userAgent } = getClientMetadata(req)
+
+    if (!otpToken || !reason || !reason.trim()) {
+      res.status(400).json({ message: 'กรุณากรอก OTP และเหตุผล' })
+      return
+    }
+
+    // 1. Get current user (requester)
+    const requester = await prisma.user.findUnique({
+      where: { uuid: req.user?.uuid },
+    })
+
+    if (!requester || requester.role !== 'SUPERVISOR') {
+      res.status(403).json({ message: 'เฉพาะ Supervisor เท่านั้น' })
+      return
+    }
+
+    // 2. Get target user
+    const target = await prisma.user.findUnique({
+      where: { uuid },
+    })
+
+    if (!target) {
+      res.status(404).json({ message: 'ไม่พบบัญชีผู้ใช้เป้าหมาย' })
+      return
+    }
+
+    if (target.uuid === requester.uuid) {
+      res.status(400).json({ message: 'ไม่สามารถดำเนินการกับตนเองได้' })
+      return
+    }
+
+    // 3. Verify OTP of the REQUESTER
+    if (!requester.twoFactorSecret) {
+      res.status(400).json({ message: 'คุณยังไม่ได้ตั้งค่า 2FA' })
+      return
+    }
+
+    const isValidOTP = speakeasy.totp.verify({
+      secret: requester.twoFactorSecret,
+      encoding: 'base32',
+      token: otpToken,
+      window: 1,
+    })
+
+    if (!isValidOTP) {
+      await logAudit(
+        req,
+        'FORCE_LOGOUT_FAILED',
+        `Supervisor ${requester.email} attempted to force logout ${target.email} but OTP was invalid`,
+        requester.id,
+      )
+      res.status(400).json({ message: 'รหัส OTP ไม่ถูกต้อง' })
+      return
+    }
+
+    // 4. Revoke all sessions (force logout)
+    await revokeAllUserSessions(target.id)
+
+    await logAudit(
+      req,
+      'FORCE_LOGOUT_SUCCESS',
+      `Supervisor ${requester.email} force logged out ${target.email}. Reason: ${reason}`,
+      requester.id,
+    )
+
+    res.status(200).json({
+      success: true,
+      message: 'บังคับออกจากระบบสำเร็จ',
+      data: {
+        target: target.email,
+        sessionsRevoked: true,
+      },
+    })
   },
 )

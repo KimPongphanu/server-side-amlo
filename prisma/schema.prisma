@@ -125,7 +125,7 @@ model comment_items {
   msg       String
   isShow    Boolean  @default(false)
   createdAt DateTime @default(now())
-  updatedAt DateTime
+  updatedAt DateTime @updatedAt
 }
 
 model contact_requests {
@@ -138,7 +138,7 @@ model contact_requests {
   message           String
   status            String   @default("ยังไม่ตอบกลับ")
   created_at        DateTime @default(now())
-  updated_at        DateTime
+  updated_at        DateTime @updatedAt
 }
 
 model email_otps {
