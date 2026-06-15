@@ -1,24 +1,22 @@
 Supervisor created:
-  Email: kimpongphanu@gmail.com
+  Email: tanut02059@gmail.com
   Password: SuperSecurePassword123!@#
   Recovery Keys (SAVE THESE NOW):
-    1. ED74CBB2BFAFFD1F
-    2. 2568942A7DD6F7CC
-    3. D9411DF8069EF4E2
-    4. AE40D37F07911BD6
-    5. AA13B9919D03A0D1
-    6. C720F3B8C20B3C33
-    7. 2E45549FCE9A9E90
-    8. B8619A9ECE5EE390
-    9. 431AEB84FB2B7311
-    10. D8C20B4B8354EE8B
+    1. D7157A89499E2F98
+    2. 321F484DA2A769EF
+    3. 88DABC1CDD771D24
+    4. 85552DE6EAE24C1E
+    5. 0DA787586A83A8BA
+    6. 0CE0699BE401ED79
+    7. E2335D11F6A8B8C6
+    8. 48B666E5D7ABDC4F
+    9. 51292B0BA0A9513C
+    10. C1ED3C9F023EE8C8
 
-  Email: somying.rak@amlo.go.th
-  Password: P@ssw0rdSupervis0r
 IMPORTANT: These recovery keys are shown only once.
 Print and store them in a secure location.
 Default Admin created:
-  Email: s6604062663183@email.kmutnb.ac.th
+  Email: s6604062663124@email.kmutnb.ac.th
   Password: AdminPassword123!
   Password: Test12345
 
