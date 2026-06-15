@@ -40,7 +40,7 @@ async function main() {
 
     const rootSupervisor = await prisma.user.create({
       data: {
-        email: 'kimpongphanu@gmail.com',
+        email: 'tanut02059@gmail.com',
         password: hashedPassword,
         firstname: 'System',
         lastname: 'Supervisor',
@@ -66,7 +66,7 @@ async function main() {
     }
 
     console.log('Supervisor created:')
-    console.log(`  Email: kimpongphanu@gmail.com`)
+    console.log(`  Email: tanut02059@gmail.com`)
     console.log(`  Password: SuperSecurePassword123!@#`)
     console.log(`  Recovery Keys (SAVE THESE NOW):`)
     recoveryKeyStrings.forEach((key, idx) => {
@@ -88,7 +88,7 @@ async function main() {
 
     await prisma.user.create({
       data: {
-        email: 's6604062663183@email.kmutnb.ac.th',
+        email: 's6604062663124@email.kmutnb.ac.th',
         password: hashedPassword,
         firstname: 'System',
         lastname: 'Admin',
@@ -100,7 +100,7 @@ async function main() {
     })
 
     console.log('Default Admin created:')
-    console.log(`  Email: s6604062663183@email.kmutnb.ac.th`)
+    console.log(`  Email: s6604062663124@email.kmutnb.ac.th`)
     console.log(`  Password: AdminPassword123!`)
   } else {
     console.log('Admin already exists. Skipping...')
