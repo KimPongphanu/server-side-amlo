@@ -4,16 +4,35 @@ import asyncHandler from 'express-async-handler'
 import jwt from 'jsonwebtoken'
 import prisma from '../lib/prisma'
 import { AuthRequest } from '../middlewares/auth'
+import {
+  step1RequestConfirmation,
+  step2ConfirmWithReason,
+} from '../middlewares/confirmAction'
+import { revokeAllUserSessions } from '../middlewares/session'
+import { sendUserActionAlert } from '../services/emailService'
 import { logAudit } from '../utils/auditLogger'
 import { getClientMetadata } from '../utils/ipSelector'
 
+const addToPasswordHistory = async (
+  userId: number,
+  passwordHash: string,
+): Promise<void> => {
+  await prisma.passwordHistory.create({
+    data: {
+      userId,
+      passwordHash,
+    },
+  })
+}
+
 export const registerUser = asyncHandler(
-  async (req: Request, res: Response) => {
-    const { email, password, firstname, lastname } = req.body
+  async (req: AuthRequest, res: Response) => {
+    const { email, password, firstname, lastname, role } = req.body
+    const { ipAddress, userAgent } = getClientMetadata(req)
 
     // 1. Validate input data presence
     if (!email || !password || !firstname || !lastname) {
-      res.status(400).json({ message: 'Please provide all required fields.' })
+      res.status(400).json({ message: 'All fields are required' })
       return
     }
 
@@ -35,8 +54,17 @@ export const registerUser = asyncHandler(
       return
     }
 
-    // Enforce strong password policy
-    const strongPasswordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{8,}$/
+    // Enforce organization email (.go.th)
+    const domainMatch = email.match(/@(.+)$/)
+    if (!domainMatch || !domainMatch[1].includes('go.th')) {
+      res
+        .status(400)
+        .json({ message: 'Only organization email (.go.th) is allowed' })
+      return
+    }
+
+    // Enforce strong password policy (allow special characters)
+    const strongPasswordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/
     if (!strongPasswordRegex.test(password)) {
       res.status(400).json({
         message:
@@ -46,24 +74,82 @@ export const registerUser = asyncHandler(
     }
 
     // 2. Check for existing user
-    const existingUser = await prisma.user.findUnique({ where: { email } })
+    const existingUser = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+    })
     if (existingUser) {
       res.status(400).json({ message: 'This email is already in use.' })
       return
     }
 
-    // 3. Hash password and save user
-    const hashedPassword = await bcrypt.hash(password, 10)
+    // Validate role: default to ADMIN, check supervisor limit
+    const requestedRole = role === 'SUPERVISOR' ? 'SUPERVISOR' : 'ADMIN'
 
-    // ป้องกัน Mass Assignment โดยใส่เฉพาะฟิลด์ที่อนุญาต (role ปล่อยเป็นค่าเริ่มต้น USER จาก Schema)
+    if (requestedRole === 'SUPERVISOR') {
+      const supervisorCount = await prisma.user.count({
+        where: { role: 'SUPERVISOR' },
+      })
+      if (supervisorCount >= 2) {
+        res.status(400).json({
+          message: 'จำนวน Supervisor ครบ 2 ท่านแล้ว ไม่สามารถสร้างเพิ่มได้',
+        })
+        return
+      }
+    }
+
+    // 3. Hash password and save user
+    const hashedPassword = await bcrypt.hash(password, 12)
+
     const user = await prisma.user.create({
-      data: { email, password: hashedPassword, firstname, lastname },
+      data: {
+        email: email.toLowerCase(),
+        password: hashedPassword,
+        firstname: firstname.trim(),
+        lastname: lastname.trim(),
+        role: requestedRole,
+        twoFactorMethod: 'NONE',
+        twoFactorEnabled: requestedRole === 'SUPERVISOR' ? false : false,
+      },
     })
+
+    await addToPasswordHistory(user.id, hashedPassword)
+
+    const supervisor = await prisma.user.findUnique({
+      where: { uuid: req.user?.uuid },
+    })
+
+    await logAudit(
+      req,
+      'CREATE_ADMIN_SUCCESS',
+      `Supervisor created new admin: ${email.toLowerCase()} (Admin ID: ${user.id})`,
+      supervisor?.id,
+    )
+
+    if (supervisor) {
+      await sendUserActionAlert(
+        supervisor.email,
+        `${supervisor.firstname} ${supervisor.lastname}`,
+        user.email,
+        `${user.firstname} ${user.lastname}`,
+        'CREATE_ADMIN',
+        `New admin account created by supervisor`,
+        `${req.user?.firstName} ${req.user?.lastName}`,
+        ipAddress,
+      )
+    }
 
     // 4. Return safe response
     res.status(201).json({
-      message: 'Registration successful.',
-      userRef: user.uuid,
+      success: true,
+      message: 'Admin created successfully',
+      data: {
+        id: user.uuid,
+        email: user.email,
+        firstname: user.firstname,
+        lastname: user.lastname,
+        role: user.role,
+        createdAt: user.createdAt,
+      },
     })
   },
 )
@@ -72,19 +158,16 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
   const { ipAddress, userAgent } = getClientMetadata(req)
   const { email, password } = req.body
 
-  console.log('[LOGIN DEBUG] Login attempt for:', email)
-  console.log('[LOGIN DEBUG] NODE_ENV:', process.env.NODE_ENV)
-
   if (!email || !password || email.length > 100 || password.length > 100) {
-    console.log('[LOGIN DEBUG] Missing credentials')
     res.status(400).json({ message: 'Please provide valid credentials.' })
     return
   }
 
-  const user = await prisma.user.findUnique({ where: { email } })
+  const user = await prisma.user.findUnique({
+    where: { email: email.toLowerCase() },
+  })
 
   if (!user || !(await bcrypt.compare(password, user.password))) {
-    console.log('[LOGIN DEBUG] Invalid credentials')
     await logAudit(
       req,
       'LOGIN_FAILED',
@@ -95,12 +178,59 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
     return
   }
 
-  console.log('[LOGIN DEBUG] User found:', user.uuid)
-  console.log('[LOGIN DEBUG] User role:', user.role)
+  // Check if user account is banned
+  if (user.status === 'Inactive') {
+    await logAudit(
+      req,
+      'LOGIN_FAILED',
+      `Login attempt for banned account: ${email.slice(0, 50)}`,
+      user.id,
+    )
+    res
+      .status(403)
+      .json({ message: 'บัญชีนี้ถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ' })
+    return
+  }
 
   const secret = process.env.JWT_SECRET
   if (!secret) throw new Error('Server configuration error.')
 
+  // 🌟 NEW: If user has 2FA enabled, issue temporary token instead of final token
+  if (user.twoFactorEnabled && user.twoFactorMethod !== 'NONE') {
+    const tempToken = jwt.sign(
+      {
+        userId: user.id,
+        purpose: '2fa_verification',
+      },
+      secret,
+      { expiresIn: '5m' },
+    )
+
+    res.cookie('temp_2fa_token', tempToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 5 * 60 * 1000,
+      path: '/',
+    })
+
+    res.status(200).json({
+      success: true,
+      requires2FA: true,
+      twoFactorMethod: user.twoFactorMethod,
+      message: 'กรุณายืนยันตัวตนด้วย 2FA',
+      user: {
+        uuid: user.uuid,
+        email: user.email,
+        firstname: user.firstname,
+        lastname: user.lastname,
+        role: user.role,
+      },
+    })
+    return
+  }
+
+  // 🌟 Normal login flow (no 2FA)
   const token = jwt.sign(
     {
       uuid: user.uuid,
@@ -113,8 +243,6 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
     { expiresIn: '1d' },
   )
 
-  console.log('[LOGIN DEBUG] Token generated, setting cookie')
-
   res.cookie('token', token, {
     httpOnly: true,
     secure: false, // MUST be false for localhost (no HTTPS)
@@ -122,25 +250,22 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
     maxAge: 24 * 60 * 60 * 1000,
     path: '/', // Ensure cookie is available for all paths
   })
-  console.log('[LOGIN DEBUG] Cookie set with options:', {
-    httpOnly: true,
-    secure: false,
-    sameSite: 'lax',
-    maxAge: 24 * 60 * 60 * 1000,
-    path: '/',
-  })
 
   await logAudit(req, 'LOGIN_SUCCESS', 'User logged in successfully.', user.id)
 
   res.status(200).json({
     message: 'Login successful.',
     success: true,
+    requires2FA: false,
     user: {
       uuid: user.uuid,
       email: user.email,
       firstname: user.firstname,
       lastname: user.lastname,
       role: user.role,
+      forcePasswordReset: user.forcePasswordReset,
+      twoFactorEnabled: user.twoFactorEnabled,
+      twoFactorMethod: user.twoFactorMethod,
     },
   })
 })
@@ -182,9 +307,12 @@ export const getMe = asyncHandler(async (req: AuthRequest, res: Response) => {
       email: true,
       firstname: true,
       lastname: true,
-      role: true, // <-- ดึงฟิลด์ role ออกมาจาก DB
+      role: true,
       createdAt: true,
       recentOnline: true,
+      forcePasswordReset: true,
+      twoFactorEnabled: true,
+      twoFactorMethod: true,
     },
   })
 
@@ -195,7 +323,7 @@ export const getMe = asyncHandler(async (req: AuthRequest, res: Response) => {
 
   res.status(200).json({
     success: true,
-    user: user, // <-- ส่งตัวแปร user ตรงๆ โดยไม่ต้อง Hardcode ครอบทับสิทธิ์อีกรอบ
+    user: user,
   })
 })
 
@@ -203,14 +331,16 @@ export const getUsers = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const users = await prisma.user.findMany({
       select: {
-        id: true,
         uuid: true,
         firstname: true,
         lastname: true,
         email: true,
         role: true,
+        status: true,
+        twoFactorEnabled: true,
+        twoFactorMethod: true,
         createdAt: true,
-        recentOnline: true, // <-- เพิ่มเพื่อให้หน้าบ้านคำนวณสถานะ Online/Offline ได้
+        recentOnline: true,
       },
       orderBy: {
         createdAt: 'desc',
@@ -225,6 +355,267 @@ export const getUsers = asyncHandler(
   },
 )
 
+export const banUser = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { step } = req.body
+  const { ipAddress, userAgent } = getClientMetadata(req)
+
+  switch (step) {
+    case 1:
+      await step1RequestConfirmation(req, res)
+      break
+    case 2:
+      await step2ConfirmWithReason(req, res)
+      break
+    case 3: {
+      const { uuid } = req.params
+      const { reason } = req.body
+
+      if (!reason || reason.trim().length === 0) {
+        res
+          .status(400)
+          .json({ message: 'Reason is required for banning a user' })
+        return
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { uuid },
+      })
+
+      if (!user) {
+        res.status(404).json({ message: 'User not found' })
+        return
+      }
+
+      if (user.role === 'SUPERVISOR') {
+        res.status(403).json({ message: 'Cannot ban supervisor account' })
+        return
+      }
+
+      const updatedUser = await prisma.user.update({
+        where: { uuid },
+        data: { status: 'Inactive' },
+      })
+
+      await revokeAllUserSessions(user.id)
+
+      const supervisor = await prisma.user.findUnique({
+        where: { uuid: req.user?.uuid },
+      })
+
+      await logAudit(
+        req,
+        'BAN_USER_SUCCESS',
+        `Supervisor banned user: ${user.email} (User ID: ${user.id}). Reason: ${reason}`,
+        supervisor?.id,
+      )
+
+      const supervisorUser = await prisma.user.findUnique({
+        where: { uuid: req.user?.uuid },
+      })
+
+      if (supervisorUser) {
+        await sendUserActionAlert(
+          supervisorUser.email,
+          `${supervisorUser.firstname} ${supervisorUser.lastname}`,
+          user.email,
+          `${user.firstname} ${user.lastname}`,
+          'BAN_USER',
+          reason,
+          `${req.user?.firstName} ${req.user?.lastName}`,
+          ipAddress,
+        )
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'User has been banned',
+        data: {
+          uuid: updatedUser.uuid,
+          email: updatedUser.email,
+          status: updatedUser.status,
+        },
+      })
+      break
+    }
+    default:
+      res.status(400).json({
+        success: false,
+        message: 'Invalid step. Please provide step 1, 2, or 3.',
+      })
+  }
+})
+
+export const unbanUser = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const { step } = req.body
+    const { ipAddress, userAgent } = getClientMetadata(req)
+
+    switch (step) {
+      case 1:
+        await step1RequestConfirmation(req, res)
+        break
+      case 2:
+        await step2ConfirmWithReason(req, res)
+        break
+      case 3: {
+        const { uuid } = req.params
+        const { reason } = req.body
+
+        if (!reason || reason.trim().length === 0) {
+          res
+            .status(400)
+            .json({ message: 'Reason is required for unbanning a user' })
+          return
+        }
+
+        const user = await prisma.user.findUnique({
+          where: { uuid },
+        })
+
+        if (!user) {
+          res.status(404).json({ message: 'User not found' })
+          return
+        }
+
+        const updatedUser = await prisma.user.update({
+          where: { uuid },
+          data: { status: 'Active' },
+        })
+
+        const supervisor = await prisma.user.findUnique({
+          where: { uuid: req.user?.uuid },
+        })
+
+        await logAudit(
+          req,
+          'UNBAN_USER_SUCCESS',
+          `Supervisor unbanned user: ${user.email} (User ID: ${user.id}). Reason: ${reason}`,
+          supervisor?.id,
+        )
+
+        const supervisorUser = await prisma.user.findUnique({
+          where: { uuid: req.user?.uuid },
+        })
+
+        if (supervisorUser) {
+          await sendUserActionAlert(
+            supervisorUser.email,
+            `${supervisorUser.firstname} ${supervisorUser.lastname}`,
+            user.email,
+            `${user.firstname} ${user.lastname}`,
+            'UNBAN_USER',
+            reason,
+            `${req.user?.firstName} ${req.user?.lastName}`,
+            ipAddress,
+          )
+        }
+
+        res.status(200).json({
+          success: true,
+          message: 'User has been unbanned',
+          data: {
+            uuid: updatedUser.uuid,
+            email: updatedUser.email,
+            status: updatedUser.status,
+          },
+        })
+        break
+      }
+      default:
+        res.status(400).json({
+          success: false,
+          message: 'Invalid step. Please provide step 1, 2, or 3.',
+        })
+    }
+  },
+)
+
+export const deleteUser = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const { step } = req.body
+    const { ipAddress, userAgent } = getClientMetadata(req)
+
+    switch (step) {
+      case 1:
+        await step1RequestConfirmation(req, res)
+        break
+      case 2:
+        await step2ConfirmWithReason(req, res)
+        break
+      case 3: {
+        const { uuid } = req.params
+        const { reason } = req.body
+
+        if (!reason || reason.trim().length === 0) {
+          res
+            .status(400)
+            .json({ message: 'Reason is required for deleting a user' })
+          return
+        }
+
+        const user = await prisma.user.findUnique({
+          where: { uuid },
+        })
+
+        if (!user) {
+          res.status(404).json({ message: 'User not found' })
+          return
+        }
+
+        if (user.role === 'SUPERVISOR') {
+          res.status(403).json({ message: 'Cannot delete supervisor account' })
+          return
+        }
+
+        await revokeAllUserSessions(user.id)
+
+        await prisma.user.delete({
+          where: { uuid },
+        })
+
+        const supervisor = await prisma.user.findUnique({
+          where: { uuid: req.user?.uuid },
+        })
+
+        await logAudit(
+          req,
+          'DELETE_USER_SUCCESS',
+          `Supervisor deleted user: ${user.email} (User ID: ${user.id}). Reason: ${reason}`,
+          supervisor?.id,
+        )
+
+        const supervisorUser = await prisma.user.findUnique({
+          where: { uuid: req.user?.uuid },
+        })
+
+        if (supervisorUser) {
+          await sendUserActionAlert(
+            supervisorUser.email,
+            `${supervisorUser.firstname} ${supervisorUser.lastname}`,
+            user.email,
+            `${user.firstname} ${user.lastname}`,
+            'DELETE_USER',
+            reason,
+            `${req.user?.firstName} ${req.user?.lastName}`,
+            ipAddress,
+          )
+        }
+
+        res.status(200).json({
+          success: true,
+          message: 'User has been deleted',
+        })
+        break
+      }
+      default:
+        res.status(400).json({
+          success: false,
+          message: 'Invalid step. Please provide step 1, 2, or 3.',
+        })
+    }
+  },
+)
+
 /**
  * @ROUTE   POST /api/auth/heartbeat
  * @DESC    อัปเดตเวลา recentOnline ของ User เพื่อบอกว่ายังออนไลน์อยู่ (ยิงทุก 5 นาทีจาก Frontend)
@@ -232,12 +623,10 @@ export const getUsers = asyncHandler(
  */
 export const heartbeat = asyncHandler(
   async (req: AuthRequest, res: Response) => {
-    // ใช้ prisma.user.update เพื่อ trigger @updatedAt บน recentOnline โดยอัตโนมัติ
-    // data: {} ไม่ต้องส่งค่าอะไร Prisma จะ set recentOnline = NOW() ให้เองจาก @updatedAt
     await prisma.user.update({
       where: { uuid: req.user.uuid },
       data: { recentOnline: new Date() },
-      select: { id: true }, // select แค่ id เพื่อประหยัด DB bandwidth
+      select: { id: true },
     })
 
     res.status(200).json({ ok: true })

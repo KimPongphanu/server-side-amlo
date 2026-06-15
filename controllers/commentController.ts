@@ -47,7 +47,7 @@ export const createComment = asyncHandler(
     }
 
     // บันทึกความคิดเห็นลงฐานข้อมูล PostgreSQL ผ่าน Prisma
-    const newComment = await prisma.commentItem.create({
+    const newComment = await prisma.comment_items.create({
       data: {
         star: parsedStar,
         msg: msg.trim(),
@@ -78,7 +78,7 @@ export const getComments = asyncHandler(async (req: Request, res: Response) => {
     whereCondition.isShow = true
   }
 
-  const comments = await prisma.commentItem.findMany({
+  const comments = await prisma.comment_items.findMany({
     where: whereCondition,
     orderBy: {
       createdAt: 'desc',
@@ -104,7 +104,7 @@ export const updateComment = asyncHandler(
     }
 
     // จัดการ Error กรณีไม่พบ ID (P2025) ได้ด้วย Global Error Handler ในอนาคต
-    const updatedComment = await prisma.commentItem.update({
+    const updatedComment = await prisma.comment_items.update({
       where: { id },
       data: { isShow: !!isShow },
     })

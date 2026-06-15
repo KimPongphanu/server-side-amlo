@@ -10,11 +10,16 @@ export const createContact = asyncHandler(
     // 🌟 ดักดึง IP Address และ User Agent ของผู้ส่งฟอร์มก่อน
     const { ipAddress, userAgent } = getClientMetadata(req)
 
-    const { firstName, lastName, email, telNumber, preferredContact, message } =
-      req.body
+    // Support both camelCase (from frontend) and snake_case (from API clients)
+    const first_name = req.body.first_name || req.body.firstName
+    const last_name = req.body.last_name || req.body.lastName
+    const email = req.body.email
+    const tel_number = req.body.tel_number || req.body.telNumber
+    const preferred_contact =
+      req.body.preferred_contact || req.body.preferredContact
+    const message = req.body.message
 
-    // ตรวจสอบข้อมูลจำเป็น
-    if (!firstName || !lastName || !email || !preferredContact || !message) {
+    if (!first_name || !last_name || !email || !preferred_contact || !message) {
       res.status(400).json({
         success: false,
         message: 'กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน',
@@ -23,13 +28,13 @@ export const createContact = asyncHandler(
     }
 
     // บันทึกลงฐานข้อมูล
-    const newRequest = await prisma.contactRequest.create({
+    const newRequest = await prisma.contact_requests.create({
       data: {
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
+        first_name: first_name.trim(),
+        last_name: last_name.trim(),
         email: email.trim().toLowerCase(),
-        telNumber: telNumber ? String(telNumber).replace(/\s/g, '') : '',
-        preferredContact,
+        tel_number: tel_number ? String(tel_number).replace(/\s/g, '') : '',
+        preferred_contact,
         message: message.trim(),
       },
     })
@@ -37,7 +42,7 @@ export const createContact = asyncHandler(
     await logAudit(
       req,
       'CREATE_CONTACT_SUCCESS',
-      `Public contact form submitted successfully (Name: ${firstName.trim()} ${lastName.trim()}, Email: ${email.trim().toLowerCase()}, Request ID: ${newRequest.id})`,
+      `Public contact form submitted successfully (Name: ${first_name.trim()} ${last_name.trim()}, Email: ${email.trim().toLowerCase()}, Request ID: ${newRequest.id})`,
       null,
     )
 
@@ -51,9 +56,9 @@ export const createContact = asyncHandler(
 
 export const getContactRequests = asyncHandler(
   async (req: AuthRequest, res: Response) => {
-    const requests = await prisma.contactRequest.findMany({
+    const requests = await prisma.contact_requests.findMany({
       orderBy: {
-        createdAt: 'desc',
+        created_at: 'desc',
       },
     })
 
@@ -80,7 +85,7 @@ export const updateContactStatus = asyncHandler(
     }
 
     // ตรวจสอบข้อมูลก่อนแก้ไขเพื่อเก็บ Log ข้อมูลเดิม
-    const oldRequest = await prisma.contactRequest.findUnique({
+    const oldRequest = await prisma.contact_requests.findUnique({
       where: { id },
     })
     if (!oldRequest) {
@@ -97,7 +102,7 @@ export const updateContactStatus = asyncHandler(
     })
 
     // ทำการอัปเดตสถานะลงใน PostgreSQL ด้วย Prisma
-    const updatedRequest = await prisma.contactRequest.update({
+    const updatedRequest = await prisma.contact_requests.update({
       where: { id },
       data: { status },
     })

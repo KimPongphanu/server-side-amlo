@@ -1,6 +1,7 @@
 // controllers/twoFactorController.ts
-import { Response } from 'express'
+import { Request, Response } from 'express'
 import asyncHandler from 'express-async-handler'
+import speakeasy from 'speakeasy'
 import prisma from '../lib/prisma'
 import { AuthRequest } from '../middlewares/auth'
 import { sendLoginAlertEmail } from '../services/emailService'
@@ -59,7 +60,27 @@ export const setup2FA = asyncHandler(
       return
     }
 
-    const { secret, otpauthUrl } = generateTOTPSecret(user.email)
+    // ✅ Use existing secret if already saved, otherwise generate new one
+    let secret = user.twoFactorSecret
+    let otpauthUrl = ''
+
+    if (!secret) {
+      const generated = generateTOTPSecret(user.email)
+      secret = generated.secret
+      otpauthUrl = generated.otpauthUrl
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { twoFactorSecret: secret },
+      })
+    } else {
+      // Rebuild otpauthUrl from existing secret (same secret every time)
+      otpauthUrl = speakeasy.otpauthURL({
+        secret: secret,
+        label: `AMLO System (${user.email})`,
+        encoding: 'base32',
+      })
+    }
 
     res.status(200).json({
       success: true,
@@ -250,8 +271,8 @@ export const requestEmailOTP = asyncHandler(
       where: { email: email.toLowerCase() },
     })
 
-    if (!user || user.role !== 'ADMIN') {
-      res.status(404).json({ message: 'Admin account not found' })
+    if (!user) {
+      res.status(404).json({ message: 'ไม่พบบัญชีผู้ใช้นี้ในระบบ' })
       return
     }
 
@@ -273,7 +294,7 @@ export const verifyEmailOTPForLogin = asyncHandler(
       return
     }
 
-    const isValid = verifyEmailOTP(email.toLowerCase(), otp)
+    const isValid = await verifyEmailOTP(email.toLowerCase(), otp)
 
     if (!isValid) {
       res.status(400).json({ message: 'Invalid or expired OTP' })
@@ -325,11 +346,11 @@ export const verify2FALogin = asyncHandler(
     if (user.twoFactorMethod === 'AUTHENTICATOR' && user.twoFactorSecret) {
       isValid = verifyTOTP(otpToken, user.twoFactorSecret)
     } else if (user.twoFactorMethod === 'EMAIL_OTP') {
-      isValid = verifyEmailOTP(user.email, otpToken)
+      isValid = await verifyEmailOTP(user.email, otpToken)
     }
 
     if (!isValid) {
-      res.status(401).json({ message: 'Invalid 2FA code' })
+      res.status(400).json({ message: 'Invalid 2FA code' })
       return
     }
 
@@ -414,7 +435,7 @@ export const useRecoveryKey = asyncHandler(
         `Invalid recovery key used for ${email}`,
         user.id,
       )
-      res.status(401).json({ message: 'Invalid or expired recovery key' })
+      res.status(400).json({ message: 'Invalid or expired recovery key' })
       return
     }
 
@@ -424,16 +445,20 @@ export const useRecoveryKey = asyncHandler(
       { expiresIn: '15m' },
     )
 
+    // Disable 2FA so user can login again with new password (without 2FA)
+    await disableTOTPForUser(user.id)
+
     await logAudit(
       req,
       'RECOVERY_KEY_USED',
-      `Recovery key used for ${email}`,
+      `Recovery key used for ${email}. 2FA has been disabled.`,
       user.id,
     )
 
     res.status(200).json({
       success: true,
-      message: 'Recovery key verified. You can now reset your password.',
+      message:
+        'Recovery key verified. 2FA has been disabled. You can now reset your password.',
       data: { resetToken: tempToken },
     })
   },

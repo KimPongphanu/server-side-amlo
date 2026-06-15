@@ -10,7 +10,7 @@ export const getAllSlides = async (
   res: Response,
   next: NextFunction,
 ): Promise<void> => {
-  const slides = await prisma.sliderImage.findMany({
+  const slides = await prisma.slider_images.findMany({
     orderBy: { order: 'asc' },
   })
 
@@ -52,7 +52,7 @@ export const createSlide = async (
   }
 
   // หา order ล่าสุด
-  const maxOrder = await prisma.sliderImage.aggregate({
+  const maxOrder = await prisma.slider_images.aggregate({
     _max: { order: true },
   })
   const nextOrder = (maxOrder._max.order ?? -1) + 1
@@ -60,7 +60,7 @@ export const createSlide = async (
   // OWASP: Sanitize filename before saving
   const sanitizedFilename = file.filename.replace(/[^a-zA-Z0-9.\-_]/g, '')
 
-  const newSlide = await prisma.sliderImage.create({
+  const newSlide = await prisma.slider_images.create({
     data: {
       image_url: `/uploads/${sanitizedFilename}`,
       order: nextOrder,
@@ -100,7 +100,7 @@ export const reorderSlides = async (
   }
 
   // ตรวจสอบว่า ID ทั้งหมดมีอยู่จริง
-  const existingSlides = await prisma.sliderImage.findMany({
+  const existingSlides = await prisma.slider_images.findMany({
     where: {
       id: {
         in: orderedIds,
@@ -120,7 +120,7 @@ export const reorderSlides = async (
   // Transaction เพื่อความปลอดภัยของข้อมูล
   await prisma.$transaction(
     orderedIds.map((id: number, index: number) =>
-      prisma.sliderImage.update({
+      prisma.slider_images.update({
         where: { id },
         data: { order: index },
       }),
@@ -147,7 +147,7 @@ export const deleteSlide = async (
   }
 
   // ตรวจสอบว่ามีสไลด์นี้อยู่จริง
-  const slide = await prisma.sliderImage.findUnique({
+  const slide = await prisma.slider_images.findUnique({
     where: { id },
   })
 
@@ -163,7 +163,7 @@ export const deleteSlide = async (
     })
   }
 
-  await prisma.sliderImage.delete({
+  await prisma.slider_images.delete({
     where: { id },
   })
 

@@ -9,7 +9,7 @@ import { globalErrorHandler } from './middlewares/errorHandler'
 
 import prisma from './lib/prisma' // 🌟 นำเข้า prisma client เพื่อสั่งคำสั่งลบข้อมูลโดยตรง
 import { apiLimiter } from './middlewares/rateLimiter'
-import adminUserRoutes from './routes/adminUserRoute'
+import adminRoutes from './routes/adminRoute'
 import auditRoutes from './routes/auditRoute'
 import authRoutes from './routes/authRoute'
 import commentRoutes from './routes/commentRoute'
@@ -18,6 +18,7 @@ import departmentRoutes from './routes/departmentRoute'
 import fileRoutes from './routes/fileRoute'
 import newsRoutes from './routes/newsRoute'
 import sliderRoutes from './routes/sliderRoute'
+import supervisorRequestRoutes from './routes/supervisorRequestRoute'
 import twoFactorRoutes from './routes/twoFactorRoute'
 import uploadRoutes from './routes/uploadRoute'
 
@@ -62,6 +63,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
 app.use('/api', apiLimiter)
 
 // ── 3. กลุ่ม Route บริการต่างๆ ──
+app.use('/api/admin', adminRoutes)
 app.use('/api/auth', authRoutes)
 app.use('/api/upload', uploadRoutes)
 app.use('/api/news', newsRoutes)
@@ -71,8 +73,8 @@ app.use('/api/contact', contactRoutes)
 app.use('/api/comments', commentRoutes)
 app.use('/api/audit', auditRoutes)
 app.use('/api/slider', sliderRoutes)
-app.use('/api/admin/users', adminUserRoutes)
 app.use('/api/2fa', twoFactorRoutes)
+app.use('/api/supervisor-request', supervisorRequestRoutes)
 
 app.get('/', (req: Request, res: Response) => {
   res.send('Server is running with TypeScript!')

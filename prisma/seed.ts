@@ -40,13 +40,14 @@ async function main() {
 
     const rootSupervisor = await prisma.user.create({
       data: {
-        email: 'supervisor@amlo.go.th',
+        email: 'kimpongphanu@gmail.com',
         password: hashedPassword,
         firstname: 'System',
         lastname: 'Supervisor',
         role: 'SUPERVISOR' as const,
         twoFactorMethod: 'NONE' as const,
         twoFactorEnabled: false,
+        forcePasswordReset: false,
       },
     })
 
@@ -87,13 +88,14 @@ async function main() {
 
     await prisma.user.create({
       data: {
-        email: 'admin@amlo.go.th',
+        email: 's6604062663183@email.kmutnb.ac.th',
         password: hashedPassword,
         firstname: 'System',
         lastname: 'Admin',
         role: 'ADMIN' as const,
         twoFactorMethod: 'NONE' as const,
         twoFactorEnabled: false,
+        forcePasswordReset: true,
       },
     })
 

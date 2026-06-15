@@ -1,9 +1,14 @@
 // controllers/adminUserController.ts
 import bcrypt from 'bcryptjs'
-import { Response } from 'express'
+import { Request, Response } from 'express'
 import asyncHandler from 'express-async-handler'
 import prisma from '../lib/prisma'
 import { AuthRequest } from '../middlewares/auth'
+import {
+  step1RequestConfirmation,
+  step2ConfirmWithReason,
+  step3ExecuteWithDelay,
+} from '../middlewares/confirmAction'
 import { revokeAllUserSessions } from '../middlewares/session'
 import { sendUserActionAlert } from '../services/emailService'
 import { logAudit } from '../utils/auditLogger'
@@ -129,6 +134,7 @@ export const createAdmin = asyncHandler(
         role: 'ADMIN',
         twoFactorMethod: 'NONE',
         twoFactorEnabled: false,
+        forcePasswordReset: true,
       },
     })
 
@@ -284,208 +290,332 @@ export const updateAdmin = asyncHandler(
   },
 )
 
+// @desc    Ban admin with 3-step confirmation
+// @route   POST /api/admin/users/:id/ban
+// @access  Super Admin
+export const adminBan = asyncHandler(async (req: Request, res: Response) => {
+  const { step } = req.body
+
+  switch (step) {
+    case 1:
+      await step1RequestConfirmation(req, res)
+      break
+    case 2:
+      await step2ConfirmWithReason(req, res)
+      break
+    case 3:
+      await step3ExecuteWithDelay(req, res)
+      break
+    default:
+      res.status(400).json({
+        success: false,
+        message: 'Invalid step. Please provide step 1, 2, or 3.',
+      })
+  }
+})
+
+// @desc    Unban admin with 3-step confirmation
+// @route   POST /api/admin/users/:id/unban
+// @access  Super Admin
+export const adminUnban = asyncHandler(async (req: Request, res: Response) => {
+  const { step } = req.body
+
+  switch (step) {
+    case 1:
+      await step1RequestConfirmation(req, res)
+      break
+    case 2:
+      await step2ConfirmWithReason(req, res)
+      break
+    case 3:
+      await step3ExecuteWithDelay(req, res)
+      break
+    default:
+      res.status(400).json({
+        success: false,
+        message: 'Invalid step. Please provide step 1, 2, or 3.',
+      })
+  }
+})
+
+// @desc    Delete admin with 3-step confirmation
+// @route   POST /api/admin/users/:id/delete
+// @access  Super Admin
+export const adminDelete = asyncHandler(async (req: Request, res: Response) => {
+  const { step } = req.body
+
+  switch (step) {
+    case 1:
+      await step1RequestConfirmation(req, res)
+      break
+    case 2:
+      await step2ConfirmWithReason(req, res)
+      break
+    case 3:
+      await step3ExecuteWithDelay(req, res)
+      break
+    default:
+      res.status(400).json({
+        success: false,
+        message: 'Invalid step. Please provide step 1, 2, or 3.',
+      })
+  }
+})
+
 export const banAdmin = asyncHandler(
   async (req: AuthRequest, res: Response) => {
-    const { uuid } = req.params
-    const { reason } = req.body as BanAdminBody
+    const { step } = req.body
     const { ipAddress, userAgent } = getClientMetadata(req)
 
-    if (!reason || reason.trim().length === 0) {
-      res
-        .status(400)
-        .json({ message: 'Reason is required for banning an admin' })
-      return
+    switch (step) {
+      case 1:
+        await step1RequestConfirmation(req, res)
+        break
+      case 2:
+        await step2ConfirmWithReason(req, res)
+        break
+      case 3: {
+        const { uuid } = req.params
+        const { reason } = req.body as BanAdminBody
+
+        if (!reason || reason.trim().length === 0) {
+          res
+            .status(400)
+            .json({ message: 'Reason is required for banning an admin' })
+          return
+        }
+
+        const admin = await prisma.user.findUnique({
+          where: { uuid },
+        })
+
+        if (!admin || admin.role !== 'ADMIN') {
+          res.status(404).json({ message: 'Admin not found' })
+          return
+        }
+
+        if (admin.role === 'SUPERVISOR') {
+          res.status(403).json({ message: 'Cannot ban supervisor account' })
+          return
+        }
+
+        const updatedAdmin = await prisma.user.update({
+          where: { uuid },
+          data: { status: 'Inactive' },
+        })
+
+        await revokeAllUserSessions(admin.id)
+
+        const supervisor = await prisma.user.findUnique({
+          where: { uuid: req.user?.uuid },
+        })
+
+        await logAudit(
+          req,
+          'BAN_ADMIN_SUCCESS',
+          `Supervisor banned admin: ${admin.email} (Admin ID: ${admin.id}). Reason: ${reason}`,
+          supervisor?.id,
+        )
+
+        const supervisorUser = await prisma.user.findUnique({
+          where: { uuid: req.user?.uuid },
+        })
+
+        if (supervisorUser) {
+          await sendUserActionAlert(
+            supervisorUser.email,
+            `${supervisorUser.firstname} ${supervisorUser.lastname}`,
+            admin.email,
+            `${admin.firstname} ${admin.lastname}`,
+            'BAN_ADMIN',
+            reason,
+            `${req.user?.firstName} ${req.user?.lastName}`,
+            ipAddress,
+          )
+        }
+
+        res.status(200).json({
+          success: true,
+          message: 'Admin has been banned',
+          data: {
+            uuid: updatedAdmin.uuid,
+            email: updatedAdmin.email,
+            status: updatedAdmin.status,
+          },
+        })
+        break
+      }
+      default:
+        res.status(400).json({
+          success: false,
+          message: 'Invalid step. Please provide step 1, 2, or 3.',
+        })
     }
-
-    const admin = await prisma.user.findUnique({
-      where: { uuid },
-    })
-
-    if (!admin || admin.role !== 'ADMIN') {
-      res.status(404).json({ message: 'Admin not found' })
-      return
-    }
-
-    if (admin.role === 'SUPERVISOR') {
-      res.status(403).json({ message: 'Cannot ban supervisor account' })
-      return
-    }
-
-    const isCurrentlyBanned = admin.status === 'Inactive'
-
-    const updatedAdmin = await prisma.user.update({
-      where: { uuid },
-      data: { status: 'Inactive' },
-    })
-
-    await revokeAllUserSessions(admin.id)
-
-    const supervisor = await prisma.user.findUnique({
-      where: { uuid: req.user?.uuid },
-    })
-
-    await logAudit(
-      req,
-      'BAN_ADMIN_SUCCESS',
-      `Supervisor banned admin: ${admin.email} (Admin ID: ${admin.id}). Reason: ${reason}`,
-      supervisor?.id,
-    )
-
-    const supervisorUser = await prisma.user.findUnique({
-      where: { uuid: req.user?.uuid },
-    })
-
-    if (supervisorUser) {
-      await sendUserActionAlert(
-        supervisorUser.email,
-        `${supervisorUser.firstname} ${supervisorUser.lastname}`,
-        admin.email,
-        `${admin.firstname} ${admin.lastname}`,
-        'BAN_ADMIN',
-        reason,
-        `${req.user?.firstName} ${req.user?.lastName}`,
-        ipAddress,
-      )
-    }
-
-    res.status(200).json({
-      success: true,
-      message: 'Admin has been banned',
-      data: {
-        uuid: updatedAdmin.uuid,
-        email: updatedAdmin.email,
-        status: updatedAdmin.status,
-      },
-    })
   },
 )
 
 export const unbanAdmin = asyncHandler(
   async (req: AuthRequest, res: Response) => {
-    const { uuid } = req.params
-    const { reason } = req.body as BanAdminBody
+    const { step } = req.body
     const { ipAddress, userAgent } = getClientMetadata(req)
 
-    if (!reason || reason.trim().length === 0) {
-      res
-        .status(400)
-        .json({ message: 'Reason is required for unbanning an admin' })
-      return
+    switch (step) {
+      case 1:
+        await step1RequestConfirmation(req, res)
+        break
+      case 2:
+        await step2ConfirmWithReason(req, res)
+        break
+      case 3: {
+        const { uuid } = req.params
+        const { reason } = req.body as BanAdminBody
+
+        if (!reason || reason.trim().length === 0) {
+          res
+            .status(400)
+            .json({ message: 'Reason is required for unbanning an admin' })
+          return
+        }
+
+        const admin = await prisma.user.findUnique({
+          where: { uuid },
+        })
+
+        if (!admin || admin.role !== 'ADMIN') {
+          res.status(404).json({ message: 'Admin not found' })
+          return
+        }
+
+        const updatedAdmin = await prisma.user.update({
+          where: { uuid },
+          data: { status: 'Active' },
+        })
+
+        const supervisor = await prisma.user.findUnique({
+          where: { uuid: req.user?.uuid },
+        })
+
+        await logAudit(
+          req,
+          'UNBAN_ADMIN_SUCCESS',
+          `Supervisor unbanned admin: ${admin.email} (Admin ID: ${admin.id}). Reason: ${reason}`,
+          supervisor?.id,
+        )
+
+        const supervisorUser = await prisma.user.findUnique({
+          where: { uuid: req.user?.uuid },
+        })
+
+        if (supervisorUser) {
+          await sendUserActionAlert(
+            supervisorUser.email,
+            `${supervisorUser.firstname} ${supervisorUser.lastname}`,
+            admin.email,
+            `${admin.firstname} ${admin.lastname}`,
+            'UNBAN_ADMIN',
+            reason,
+            `${req.user?.firstName} ${req.user?.lastName}`,
+            ipAddress,
+          )
+        }
+
+        res.status(200).json({
+          success: true,
+          message: 'Admin has been unbanned',
+          data: {
+            uuid: updatedAdmin.uuid,
+            email: updatedAdmin.email,
+            status: updatedAdmin.status,
+          },
+        })
+        break
+      }
+      default:
+        res.status(400).json({
+          success: false,
+          message: 'Invalid step. Please provide step 1, 2, or 3.',
+        })
     }
-
-    const admin = await prisma.user.findUnique({
-      where: { uuid },
-    })
-
-    if (!admin || admin.role !== 'ADMIN') {
-      res.status(404).json({ message: 'Admin not found' })
-      return
-    }
-
-    const updatedAdmin = await prisma.user.update({
-      where: { uuid },
-      data: { status: 'Active' },
-    })
-
-    const supervisor = await prisma.user.findUnique({
-      where: { uuid: req.user?.uuid },
-    })
-
-    await logAudit(
-      req,
-      'UNBAN_ADMIN_SUCCESS',
-      `Supervisor unbanned admin: ${admin.email} (Admin ID: ${admin.id}). Reason: ${reason}`,
-      supervisor?.id,
-    )
-
-    const supervisorUser = await prisma.user.findUnique({
-      where: { uuid: req.user?.uuid },
-    })
-
-    if (supervisorUser) {
-      await sendUserActionAlert(
-        supervisorUser.email,
-        `${supervisorUser.firstname} ${supervisorUser.lastname}`,
-        admin.email,
-        `${admin.firstname} ${admin.lastname}`,
-        'UNBAN_ADMIN',
-        reason,
-        `${req.user?.firstName} ${req.user?.lastName}`,
-        ipAddress,
-      )
-    }
-
-    res.status(200).json({
-      success: true,
-      message: 'Admin has been unbanned',
-      data: {
-        uuid: updatedAdmin.uuid,
-        email: updatedAdmin.email,
-        status: updatedAdmin.status,
-      },
-    })
   },
 )
 
 export const deleteAdmin = asyncHandler(
   async (req: AuthRequest, res: Response) => {
-    const { uuid } = req.params
-    const { reason } = req.body as BanAdminBody
+    const { step } = req.body
     const { ipAddress, userAgent } = getClientMetadata(req)
 
-    if (!reason || reason.trim().length === 0) {
-      res
-        .status(400)
-        .json({ message: 'Reason is required for deleting an admin' })
-      return
+    switch (step) {
+      case 1:
+        await step1RequestConfirmation(req, res)
+        break
+      case 2:
+        await step2ConfirmWithReason(req, res)
+        break
+      case 3: {
+        const { uuid } = req.params
+        const { reason } = req.body as BanAdminBody
+
+        if (!reason || reason.trim().length === 0) {
+          res
+            .status(400)
+            .json({ message: 'Reason is required for deleting an admin' })
+          return
+        }
+
+        const admin = await prisma.user.findUnique({
+          where: { uuid },
+        })
+
+        if (!admin || admin.role !== 'ADMIN') {
+          res.status(404).json({ message: 'Admin not found' })
+          return
+        }
+
+        await revokeAllUserSessions(admin.id)
+
+        await prisma.user.delete({
+          where: { uuid },
+        })
+
+        const supervisor = await prisma.user.findUnique({
+          where: { uuid: req.user?.uuid },
+        })
+
+        await logAudit(
+          req,
+          'DELETE_ADMIN_SUCCESS',
+          `Supervisor deleted admin: ${admin.email} (Admin ID: ${admin.id}). Reason: ${reason}`,
+          supervisor?.id,
+        )
+
+        const supervisorUser = await prisma.user.findUnique({
+          where: { uuid: req.user?.uuid },
+        })
+
+        if (supervisorUser) {
+          await sendUserActionAlert(
+            supervisorUser.email,
+            `${supervisorUser.firstname} ${supervisorUser.lastname}`,
+            admin.email,
+            `${admin.firstname} ${admin.lastname}`,
+            'DELETE_ADMIN',
+            reason,
+            `${req.user?.firstName} ${req.user?.lastName}`,
+            ipAddress,
+          )
+        }
+
+        res.status(200).json({
+          success: true,
+          message: 'Admin has been deleted',
+        })
+        break
+      }
+      default:
+        res.status(400).json({
+          success: false,
+          message: 'Invalid step. Please provide step 1, 2, or 3.',
+        })
     }
-
-    const admin = await prisma.user.findUnique({
-      where: { uuid },
-    })
-
-    if (!admin || admin.role !== 'ADMIN') {
-      res.status(404).json({ message: 'Admin not found' })
-      return
-    }
-
-    await revokeAllUserSessions(admin.id)
-
-    await prisma.user.delete({
-      where: { uuid },
-    })
-
-    const supervisor = await prisma.user.findUnique({
-      where: { uuid: req.user?.uuid },
-    })
-
-    await logAudit(
-      req,
-      'DELETE_ADMIN_SUCCESS',
-      `Supervisor deleted admin: ${admin.email} (Admin ID: ${admin.id}). Reason: ${reason}`,
-      supervisor?.id,
-    )
-
-    const supervisorUser = await prisma.user.findUnique({
-      where: { uuid: req.user?.uuid },
-    })
-
-    if (supervisorUser) {
-      await sendUserActionAlert(
-        supervisorUser.email,
-        `${supervisorUser.firstname} ${supervisorUser.lastname}`,
-        admin.email,
-        `${admin.firstname} ${admin.lastname}`,
-        'DELETE_ADMIN',
-        reason,
-        `${req.user?.firstName} ${req.user?.lastName}`,
-        ipAddress,
-      )
-    }
-
-    res.status(200).json({
-      success: true,
-      message: 'Admin has been deleted',
-    })
   },
 )

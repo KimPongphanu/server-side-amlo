@@ -83,14 +83,14 @@ export const createDepartment = asyncHandler(
         title,
         content: sanitizedContent,
         cover_image: coverImagePath,
-        gallery: { create: galleryData },
+        GalleryItem: { create: galleryData },
       },
-      include: { gallery: true },
+      include: { GalleryItem: true },
     })
 
     const formattedDepartment = {
       ...department,
-      gallery: department.gallery.map((g: GalleryResponseItem) => ({
+      gallery: department.GalleryItem.map((g: GalleryResponseItem) => ({
         ...g,
         type: g.type.toLowerCase(),
       })),
@@ -117,7 +117,7 @@ export const getDepartments = asyncHandler(
     const departments = await prisma.department.findMany({
       where: { isDelete: false },
       include: {
-        gallery: {
+        GalleryItem: {
           select: { id: true, type: true, url: true, departmentId: true },
         },
       },
@@ -125,7 +125,7 @@ export const getDepartments = asyncHandler(
 
     const formattedDepartments = departments.map((d: any) => ({
       ...d,
-      gallery: d.gallery.map((g: GalleryResponseItem) => ({
+      gallery: d.GalleryItem.map((g: GalleryResponseItem) => ({
         ...g,
         type: g.type.toLowerCase(),
       })),
@@ -269,14 +269,14 @@ export const updateDepartment = asyncHandler(
         title,
         content: sanitizedContent,
         cover_image: coverImagePath,
-        ...(galleryUpdateData && { gallery: galleryUpdateData }),
+        ...(galleryUpdateData && { GalleryItem: galleryUpdateData }),
       },
-      include: { gallery: true },
+      include: { GalleryItem: true },
     })
 
     const formattedDepartment = {
       ...updatedDept,
-      gallery: updatedDept.gallery.map((g: GalleryResponseItem) => ({
+      gallery: updatedDept.GalleryItem.map((g: GalleryResponseItem) => ({
         ...g,
         type: g.type.toLowerCase(),
       })),

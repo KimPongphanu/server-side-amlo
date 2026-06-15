@@ -1,6 +1,6 @@
 // routes/auditRoute.ts
 import express, { Request, Response, Router } from 'express'
-import asyncHandler from 'express-async-handler' // 🌟 นำเข้า asyncHandler
+import asyncHandler from 'express-async-handler'
 import prisma from '../lib/prisma'
 import auth, { restrictTo } from '../middlewares/auth'
 
@@ -9,8 +9,10 @@ const router: Router = express.Router()
 router.get(
   '/',
   auth,
-  restrictTo('SUPERVISOR'), // Add this line
+  restrictTo('SUPERVISOR'),
   asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.query.userId ? Number(req.query.userId) : undefined
+
     const logs = await prisma.auditLog.findMany({
       where: userId ? { userId } : undefined,
       orderBy: { createdAt: 'desc' },

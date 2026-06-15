@@ -1,0 +1,162 @@
+// controllers/passwordResetController.ts
+import bcrypt from 'bcryptjs'
+import { Request, Response } from 'express'
+import asyncHandler from 'express-async-handler'
+import jwt from 'jsonwebtoken'
+import prisma from '../lib/prisma'
+import { sendEmail } from '../services/emailService'
+import { logAudit } from '../utils/auditLogger'
+import { getClientMetadata } from '../utils/ipSelector'
+
+interface ResetPasswordBody {
+  email: string
+  otp?: string
+  resetToken?: string
+  newPassword: string
+}
+
+export const resetPassword = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { email, otp, resetToken, newPassword } =
+      req.body as ResetPasswordBody
+    const { ipAddress, userAgent } = getClientMetadata(req)
+
+    if (!email || !newPassword) {
+      res.status(400).json({ message: 'Email and new password are required' })
+      return
+    }
+
+    if ((!otp || otp === '') && (!resetToken || resetToken === '')) {
+      res.status(400).json({ message: 'OTP or reset token is required' })
+      return
+    }
+
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/
+    if (!passwordRegex.test(newPassword)) {
+      res.status(400).json({
+        message:
+          'รหัสผ่านต้องมีอย่างน้อย 8 ตัว ประกอบด้วยตัวพิมพ์ใหญ่ ตัวพิมพ์เล็ก และตัวเลข',
+      })
+      return
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+    })
+
+    if (!user) {
+      res.status(404).json({ message: 'User not found' })
+      return
+    }
+
+    // Verify OTP if provided (save id for later, don't mark used yet)
+    let verifiedOtpId: number | null = null
+    if (otp) {
+      const emailOtp = await prisma.emailOtp.findFirst({
+        where: {
+          email: email.toLowerCase(),
+          otp,
+          used: false,
+          expiresAt: { gt: new Date() },
+        },
+      })
+
+      if (!emailOtp) {
+        res.status(400).json({ message: 'Invalid or expired OTP' })
+        return
+      }
+
+      verifiedOtpId = emailOtp.id
+    }
+
+    // Verify reset token from recovery key flow
+    if (resetToken) {
+      try {
+        const decoded = jwt.verify(
+          resetToken,
+          process.env.JWT_SECRET as string,
+        ) as { userId: number; purpose?: string }
+
+        if (decoded.userId !== user.id) {
+          res.status(400).json({ message: 'Reset token does not match user' })
+          return
+        }
+      } catch {
+        res.status(400).json({ message: 'Invalid or expired reset token' })
+        return
+      }
+    }
+
+    // Check password history (last 3 passwords)
+    const history = await prisma.passwordHistory.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+      take: 3,
+    })
+
+    for (const record of history) {
+      const isMatch = await bcrypt.compare(newPassword, record.passwordHash)
+      if (isMatch) {
+        res.status(400).json({
+          message: 'รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านก่อนหน้า 3 ครั้งล่าสุด',
+        })
+        return
+      }
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 12)
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashedPassword },
+    })
+
+    await prisma.passwordHistory.create({
+      data: {
+        userId: user.id,
+        passwordHash: hashedPassword,
+      },
+    })
+
+    // 🌟 Mark OTP as used ONLY after all validations pass and password is saved
+    if (verifiedOtpId) {
+      await prisma.emailOtp.update({
+        where: { id: verifiedOtpId },
+        data: { used: true },
+      })
+    }
+
+    await logAudit(
+      req,
+      'PASSWORD_RESET_SUCCESS',
+      `Password reset successfully for user: ${user.email}`,
+      user.id,
+    )
+
+    const html = `
+      <h2>Password Reset Successful</h2>
+      <p>Dear ${user.firstname} ${user.lastname},</p>
+      <p>Your password has been successfully reset.</p>
+      <h3>Details:</h3>
+      <ul>
+        <li>Time: ${new Date().toLocaleString('th-TH')}</li>
+        <li>IP Address: ${ipAddress}</li>
+        <li>Device: ${userAgent}</li>
+      </ul>
+      <p>If you did not perform this action, please contact IT support immediately.</p>
+      <hr>
+      <p><small>Anti-Money Laundering Office (AMLO)</small></p>
+    `
+
+    await sendEmail({
+      to: user.email,
+      subject: '[SECURITY] Your Password Has Been Reset',
+      html,
+    })
+
+    res.status(200).json({
+      success: true,
+      message: 'Password has been reset successfully',
+    })
+  },
+)
