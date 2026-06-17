@@ -301,7 +301,7 @@ export const logoutUser = asyncHandler(
 
 export const getMe = asyncHandler(async (req: AuthRequest, res: Response) => {
   const user = await prisma.user.findUnique({
-    where: { uuid: req.user.uuid },
+    where: { uuid: req.user!.uuid },
     select: {
       id: true,
       uuid: true,
@@ -625,7 +625,7 @@ export const deleteUser = asyncHandler(
 export const heartbeat = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     await prisma.user.update({
-      where: { uuid: req.user.uuid },
+      where: { uuid: req.user!.uuid },
       data: { recentOnline: new Date() },
       select: { id: true },
     })

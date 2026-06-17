@@ -139,17 +139,17 @@ export const getContactRequests = asyncHandler(
       },
     })
 
-    const mappedRequests = requests.map((req) => ({
-      id: req.id,
-      firstName: req.first_name,
-      lastName: req.last_name,
-      email: req.email,
-      telNumber: req.tel_number,
-      preferredContact: req.preferred_contact,
-      message: req.message,
-      status: req.status,
-      createdAt: req.created_at,
-      updatedAt: req.updated_at,
+    const mappedRequests = requests.map((item: (typeof requests)[0]) => ({
+      id: item.id,
+      firstName: item.first_name,
+      lastName: item.last_name,
+      email: item.email,
+      telNumber: item.tel_number,
+      preferredContact: item.preferred_contact,
+      message: item.message,
+      status: item.status,
+      createdAt: item.created_at,
+      updatedAt: item.updated_at,
     }))
 
     res.status(200).json({
