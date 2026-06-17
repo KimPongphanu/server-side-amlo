@@ -17,7 +17,7 @@ async function main() {
     const sliderRes = await pool.query(`DELETE FROM slider_images WHERE image_url LIKE '%dummy%'`)
     console.log(`  🗑️ Deleted ${sliderRes.rowCount} Slider items.`)
 
-    const contactRes = await pool.query(`DELETE FROM "contact_requests" WHERE "first_name" LIKE '%AutomatedTestSomchai%'`)
+    const contactRes = await pool.query(`DELETE FROM "contact_requests" WHERE "first_name" LIKE '%AutoSomchai%'`)
     console.log(`  🗑️ Deleted ${contactRes.rowCount} Contact Requests.`)
 
     const commentRes = await pool.query(`DELETE FROM "comment_items" WHERE "msg" LIKE '%[Automated Test]%'`)

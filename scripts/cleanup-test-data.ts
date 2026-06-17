@@ -8,13 +8,13 @@ async function main() {
   try {
     // 1. Delete News & PR
     const newsRes = await prisma.news.deleteMany({
-      where: { title: { contains: '[Automated Test]' } }
+      where: { title: { contains: 'AutoSomchai' } }
     })
     console.log(`  🗑️ Deleted ${newsRes.count} News/PR items.`)
 
     // 2. Delete Departments
     const deptRes = await prisma.department.deleteMany({
-      where: { title: { contains: '[Automated Test]' } }
+      where: { title: { contains: 'AutoSomchai' } }
     })
     console.log(`  🗑️ Deleted ${deptRes.count} Department items.`)
 
