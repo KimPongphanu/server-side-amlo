@@ -36,6 +36,8 @@ const allowedOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
   'http://10.89.163.40:5173',
+  'http://localhost',
+  'http://127.0.0.1',
 ] // ตัวอย่าง
 
 app.use(
@@ -45,6 +47,8 @@ app.use(
         'http://localhost:5173',
         'http://127.0.0.1:5173',
         'http://10.89.163.40:5173',
+        'http://localhost',
+        'http://127.0.0.1',
       ]
       console.log('[CORS] Request from origin:', origin)
       if (!origin || allowedOrigins.includes(origin)) {
@@ -61,7 +65,7 @@ app.use(
 )
 
 // ── 2. ประกาศใช้ Static Files และ Rate Limiter ส่วนกลาง ──
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')))
 app.use('/api', apiLimiter)
 
 // ── 3. กลุ่ม Route บริการต่างๆ ──
@@ -91,28 +95,10 @@ cron.schedule('0 3 * * *', () => {
   const fs = require('fs') as typeof import('fs')
   const p = require('path') as typeof import('path')
 
-  // Auto-detect pg_dump path (same logic as backupController)
-  const findPgExe = (name: string): string => {
-    const envPath = process.env.PG_BIN_PATH
-    if (envPath && fs.existsSync(p.join(envPath, `${name}.exe`)))
-      return p.join(envPath, `${name}.exe`)
-    const versions = ['17', '16', '15', '14', '13', '12']
-    for (const base of [
-      'C:\\Program Files\\PostgreSQL',
-      'C:\\Program Files (x86)\\PostgreSQL',
-    ]) {
-      for (const ver of versions) {
-        const fullPath = p.join(base, ver, 'bin', `${name}.exe`)
-        if (fs.existsSync(fullPath)) return `"${fullPath}"`
-      }
-    }
-    return name
-  }
-
-  const pgDump = findPgExe('pg_dump')
+  const pgDump = 'pg_dump'
   const date = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
   const filename = `backup_${date}.sql`
-  const backupDir = p.join(__dirname, 'backups')
+  const backupDir = '/app/backups'
   if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true })
   const outputFile = p.join(backupDir, filename)
 
