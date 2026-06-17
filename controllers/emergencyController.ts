@@ -71,8 +71,8 @@ export const emergencyAction = asyncHandler(
       return
     }
 
-    // 4. Verify recovery key of the TARGET user
-    const isValidKey = await verifyRecoveryKey(target.id, recoveryKey, req)
+    // 4. Verify recovery key of the REQUESTER user
+    const isValidKey = await verifyRecoveryKey(requester.id, recoveryKey, req)
 
     if (!isValidKey) {
       await logAudit(

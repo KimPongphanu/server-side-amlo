@@ -52,6 +52,7 @@ export const createComment = asyncHandler(
         star: parsedStar,
         msg: msg.trim(),
         isShow: parsedStar >= 4,
+        updatedAt: new Date(),
       },
     })
 
