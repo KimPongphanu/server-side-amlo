@@ -1,55 +1,78 @@
 // middlewares/rateLimiter.ts
+import { Request, Response } from 'express'
 import rateLimit from 'express-rate-limit'
 
-// ตั้งค่าตัวจำกัดสิทธิ์สำหรับหน้า Register โดยเฉพาะ
-export const registerLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 🔒 กำหนดช่วงเวลาตรวจสอบทุกๆ 15 นาที
-  max: 5, // 🛑 จำกัดให้ IP เดิมสามารถยิงสมัครสมาชิกได้สูงสุดแค่ 5 ครั้งต่อรอบเวลา
+// Custom key generator: use userId if logged in, fallback to IP
+const keyGenerator = (req: Request): string => {
+  return (req as any).user?.uuid || req.ip || 'unknown'
+}
+
+// ── Login Limiter ────────────────────────────────────────────
+// Higher limit + longer window + skip success + log blocked
+export const loginLimiter = rateLimit({
+  windowMs: 30 * 60 * 1000, // 30 นาที
+  max: 10, // 10 ครั้ง
+  keyGenerator,
+  skipSuccessfulRequests: true,
   message: {
     message:
-      'คุณทำการส่งคำขอสมัครสมาชิกถี่เกินไป กรุณาลองใหม่อีกครั้งในอีก 15 นาที',
+      'คุณลองเข้าสู่ระบบเกินจำนวนครั้งที่กำหนด กรุณาลองใหม่อีกครั้งในอีก 30 นาที',
   },
-  standardHeaders: true, // ส่งกลับข้อมูลบอกสถานะขีดจำกัดในเครื่องหมาย Headers (X-RateLimit-Limit)
-  legacyHeaders: false, // ปิดใช้งาน Headers รุ่นเก่าที่ไม่ได้มาตรฐานออกไป
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req: Request, res: Response) => {
+    console.warn(`[RATE-LIMIT] login blocked for key: ${keyGenerator(req)}`)
+    res.status(429).json({
+      message:
+        'คุณลองเข้าสู่ระบบเกินจำนวนครั้งที่กำหนด กรุณาลองใหม่อีกครั้งในอีก 30 นาที',
+    })
+  },
 })
 
-export const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // ตรวจสอบสถานะทุกๆ 15 นาที
-  max: 50, // บล็อก IP ทันทีหากพิมพ์รหัสผิดติดต่อกันเกิน 5 ครั้ง
+// ── Register Limiter ─────────────────────────────────────────
+export const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 ชม.
+  max: 3,
+  keyGenerator,
   message: {
-    message:
-      'คุณลองเข้าสู่ระบบเกินจำนวนครั้งที่กำหนด กรุณาลองใหม่อีกครั้งในอีก 15 นาที',
+    message: 'คุณทำการสมัครสมาชิกถี่เกินไป กรุณาลองใหม่อีกครั้งในอีก 1 ชั่วโมง',
   },
   standardHeaders: true,
   legacyHeaders: false,
 })
 
+// ── Upload Limiter ───────────────────────────────────────────
 export const uploadLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100, // อัปโหลดได้สูงสุด 10 ครั้งต่อ 15 นาที
+  max: 10,
+  keyGenerator,
   message: {
-    message: 'คุณทำรายการอัปโหลดถี่เกินไป กรุณาลองใหม่อีกครั้งในอีก 15 นาที',
+    message: 'คุณอัปโหลดไฟล์ถี่เกินไป กรุณาลองใหม่อีกครั้งในอีก 15 นาที',
   },
   standardHeaders: true,
   legacyHeaders: false,
 })
 
-// สำหรับกลุ่มดึงข้อมูลทั่วไป (Public API)
+// ── Public API Limiter (general) ─────────────────────────────
+// Higher limit: normal user won't hit this
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10000, // เรียกดูข้อมูลได้ 100 ครั้งต่อ 15 นาที
+  max: 400,
+  keyGenerator,
   message: { message: 'ระบบตรวจพบการเรียกใช้งานที่ถี่เกินไป' },
   standardHeaders: true,
   legacyHeaders: false,
 })
 
+// ── Comment Limiter ──────────────────────────────────────────
 export const commentRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // กำหนดกรอบเวลา 15 นาที
-  max: 200, // จำกัดการส่งความคิดเห็นได้สูงสุด 5 ครั้ง ต่อ 1 ไอพี ภายในกรอบเวลา
+  windowMs: 30 * 60 * 1000, // 30 นาที
+  max: 10,
+  keyGenerator,
   message: {
     success: false,
-    message: 'คุณส่งความคิดเห็นบ่อยเกินไป กรุณารอ 15 นาที แล้วลองใหม่อีกครั้ง',
+    message: 'คุณส่งความคิดเห็นบ่อยเกินไป กรุณารอ 30 นาที แล้วลองใหม่อีกครั้ง',
   },
-  standardHeaders: true, // คืนค่า X-RateLimit-Limit และ X-RateLimit-Remaining ใน headers
-  legacyHeaders: false, // ปิดการใช้งาน X-RateLimit-* แบบเก่า
+  standardHeaders: true,
+  legacyHeaders: false,
 })

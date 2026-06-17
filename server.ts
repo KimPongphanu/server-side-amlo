@@ -26,6 +26,7 @@ const app: Express = express()
 const port: number = 8080
 
 // ── 1. ประกาศตั้งค่าพื้นฐานของระบบและ CORS ก่อนเริ่มแมป Route ──
+app.set('trust proxy', 1) // trust first proxy (Nginx, Cloudflare, etc.)
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(cookieParser())
