@@ -4,16 +4,19 @@ import rateLimit from 'express-rate-limit'
 
 // Custom key generator: use userId if logged in, fallback to IP
 const keyGenerator = (req: Request): string => {
-  return (req as any).user?.uuid || req.ip || 'unknown'
+  const forwarded = req.headers['x-forwarded-for']
+  const ip =
+    typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : req.ip
+  return (req as any).user?.uuid || ip || 'unknown'
 }
 
 // ── Login Limiter ────────────────────────────────────────────
-// Higher limit + longer window + skip success + log blocked
 export const loginLimiter = rateLimit({
-  windowMs: 30 * 60 * 1000, // 30 นาที
-  max: 10, // 10 ครั้ง
+  windowMs: 30 * 60 * 1000,
+  max: 10,
   keyGenerator,
   skipSuccessfulRequests: true,
+  validate: false,
   message: {
     message:
       'คุณลองเข้าสู่ระบบเกินจำนวนครั้งที่กำหนด กรุณาลองใหม่อีกครั้งในอีก 30 นาที',
@@ -31,9 +34,10 @@ export const loginLimiter = rateLimit({
 
 // ── Register Limiter ─────────────────────────────────────────
 export const registerLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 ชม.
+  windowMs: 60 * 60 * 1000,
   max: 3,
   keyGenerator,
+  validate: false,
   message: {
     message: 'คุณทำการสมัครสมาชิกถี่เกินไป กรุณาลองใหม่อีกครั้งในอีก 1 ชั่วโมง',
   },
@@ -46,6 +50,7 @@ export const uploadLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   keyGenerator,
+  validate: false,
   message: {
     message: 'คุณอัปโหลดไฟล์ถี่เกินไป กรุณาลองใหม่อีกครั้งในอีก 15 นาที',
   },
@@ -54,11 +59,11 @@ export const uploadLimiter = rateLimit({
 })
 
 // ── Public API Limiter (general) ─────────────────────────────
-// Higher limit: normal user won't hit this
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 400,
   keyGenerator,
+  validate: false,
   message: { message: 'ระบบตรวจพบการเรียกใช้งานที่ถี่เกินไป' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -66,9 +71,10 @@ export const apiLimiter = rateLimit({
 
 // ── Comment Limiter ──────────────────────────────────────────
 export const commentRateLimiter = rateLimit({
-  windowMs: 30 * 60 * 1000, // 30 นาที
+  windowMs: 30 * 60 * 1000,
   max: 10,
   keyGenerator,
+  validate: false,
   message: {
     success: false,
     message: 'คุณส่งความคิดเห็นบ่อยเกินไป กรุณารอ 30 นาที แล้วลองใหม่อีกครั้ง',
