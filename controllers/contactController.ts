@@ -37,6 +37,7 @@ export const createContact = asyncHandler(
         tel_number: tel_number ? String(tel_number).replace(/\s/g, '') : '',
         preferred_contact,
         message: message.trim(),
+        updated_at: new Date(),
       },
     })
 
@@ -138,9 +139,22 @@ export const getContactRequests = asyncHandler(
       },
     })
 
+    const mappedRequests = requests.map((req) => ({
+      id: req.id,
+      firstName: req.first_name,
+      lastName: req.last_name,
+      email: req.email,
+      telNumber: req.tel_number,
+      preferredContact: req.preferred_contact,
+      message: req.message,
+      status: req.status,
+      createdAt: req.created_at,
+      updatedAt: req.updated_at,
+    }))
+
     res.status(200).json({
       success: true,
-      data: requests,
+      data: mappedRequests,
     })
   },
 )
