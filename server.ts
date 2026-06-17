@@ -12,6 +12,7 @@ import { apiLimiter } from './middlewares/rateLimiter'
 import adminRoutes from './routes/adminRoute'
 import auditRoutes from './routes/auditRoute'
 import authRoutes from './routes/authRoute'
+import backupRoutes from './routes/backupRoute'
 import commentRoutes from './routes/commentRoute'
 import contactRoutes from './routes/contactRoute'
 import departmentRoutes from './routes/departmentRoute'
@@ -76,6 +77,7 @@ app.use('/api/audit', auditRoutes)
 app.use('/api/slider', sliderRoutes)
 app.use('/api/2fa', twoFactorRoutes)
 app.use('/api/supervisor-request', supervisorRequestRoutes)
+app.use('/api/backups', backupRoutes)
 
 app.get('/', (req: Request, res: Response) => {
   res.send('Server is running with TypeScript!')
@@ -83,8 +85,56 @@ app.get('/', (req: Request, res: Response) => {
 
 app.use(globalErrorHandler)
 
-// ── 4. กลไกลบ Audit Log อัตโนมัติ (Data Retention Policy) ──
-// ตั้งค่ารันทำงานโดยอัตโนมัติในทุกๆ วันเวลาเที่ยงคืนตรง (00:00)
+// ── 4. Auto Backup — 03:00 daily ──
+import { exec } from 'child_process'
+cron.schedule('0 3 * * *', () => {
+  const fs = require('fs') as typeof import('fs')
+  const p = require('path') as typeof import('path')
+
+  // Auto-detect pg_dump path (same logic as backupController)
+  const findPgExe = (name: string): string => {
+    const envPath = process.env.PG_BIN_PATH
+    if (envPath && fs.existsSync(p.join(envPath, `${name}.exe`)))
+      return p.join(envPath, `${name}.exe`)
+    const versions = ['17', '16', '15', '14', '13', '12']
+    for (const base of [
+      'C:\\Program Files\\PostgreSQL',
+      'C:\\Program Files (x86)\\PostgreSQL',
+    ]) {
+      for (const ver of versions) {
+        const fullPath = p.join(base, ver, 'bin', `${name}.exe`)
+        if (fs.existsSync(fullPath)) return `"${fullPath}"`
+      }
+    }
+    return name
+  }
+
+  const pgDump = findPgExe('pg_dump')
+  const date = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+  const filename = `backup_${date}.sql`
+  const backupDir = p.join(__dirname, 'backups')
+  if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true })
+  const outputFile = p.join(backupDir, filename)
+
+  const url = new URL(process.env.DATABASE_URL!)
+  const cmd = `${pgDump} --host=${url.hostname} --port=${url.port || '5432'} --username=${decodeURIComponent(url.username)} --dbname=${url.pathname.slice(1)} --file="${outputFile}" --format=plain --no-owner`
+
+  exec(
+    cmd,
+    {
+      env: { PGPASSWORD: decodeURIComponent(url.password) },
+      timeout: 5 * 60 * 1000,
+    },
+    (err) => {
+      if (err) return console.error('[Auto Backup] Failed:', err.message)
+      console.log(
+        `[Auto Backup] Created: ${filename} (${(fs.statSync(outputFile).size / 1024 / 1024).toFixed(1)} MB)`,
+      )
+    },
+  )
+})
+
+// ── 5. กลไกลบ Audit Log อัตโนมัติ (Data Retention Policy) ──
 cron.schedule('0 0 * * *', async () => {
   try {
     const cutOffDate = new Date()
