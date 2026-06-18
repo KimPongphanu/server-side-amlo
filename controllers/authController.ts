@@ -168,7 +168,38 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
     where: { email: email.toLowerCase() },
   })
 
+  // === Failed Login Attempt Check ===
+  let failedAttempt = await prisma.failedLoginAttempt.findFirst({
+    where: { email: email.toLowerCase() },
+  })
+
+  if (failedAttempt && failedAttempt.lockedUntil && failedAttempt.lockedUntil > new Date()) {
+    res.status(429).json({ message: 'บัญชีถูกระงับชั่วคราวเนื่องจากเข้าสู่ระบบผิดพลาดหลายครั้ง กรุณาลองใหม่ในภายหลัง' })
+    return
+  }
+
   if (!user || !(await bcrypt.compare(password, user.password))) {
+    if (failedAttempt) {
+      const newAttempts = failedAttempt.attempts + 1
+      let lockedUntil = null
+      if (newAttempts >= 5) {
+        lockedUntil = new Date(Date.now() + 15 * 60 * 1000) // Lock for 15 mins
+      }
+      await prisma.failedLoginAttempt.update({
+        where: { id: failedAttempt.id },
+        data: { attempts: newAttempts, lastAttempt: new Date(), lockedUntil }
+      })
+    } else {
+      await prisma.failedLoginAttempt.create({
+        data: {
+          email: email.toLowerCase(),
+          ipAddress,
+          attempts: 1,
+          userId: user ? user.id : null
+        }
+      })
+    }
+
     await logAudit(
       req,
       'LOGIN_FAILED',
@@ -177,6 +208,13 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
     )
     res.status(401).json({ message: 'Invalid email or password.' })
     return
+  }
+
+  // Clear failed attempts upon successful login
+  if (failedAttempt) {
+    await prisma.failedLoginAttempt.deleteMany({
+      where: { email: email.toLowerCase() }
+    })
   }
 
   // Check if user account is banned
@@ -330,27 +368,39 @@ export const getMe = asyncHandler(async (req: AuthRequest, res: Response) => {
 
 export const getUsers = asyncHandler(
   async (req: AuthRequest, res: Response) => {
-    const users = await prisma.user.findMany({
-      select: {
-        uuid: true,
-        firstname: true,
-        lastname: true,
-        email: true,
-        role: true,
-        status: true,
-        twoFactorEnabled: true,
-        twoFactorMethod: true,
-        createdAt: true,
-        recentOnline: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    })
+    const page = parseInt(req.query.page as string) || 1
+    const limit = parseInt(req.query.limit as string) || 10
+    const skip = (page - 1) * limit
+
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        select: {
+          uuid: true,
+          firstname: true,
+          lastname: true,
+          email: true,
+          role: true,
+          status: true,
+          twoFactorEnabled: true,
+          twoFactorMethod: true,
+          createdAt: true,
+          recentOnline: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        skip,
+        take: limit,
+      }),
+      prisma.user.count(),
+    ])
 
     res.status(200).json({
       success: true,
       count: users.length,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
       data: users,
     })
   },
@@ -399,6 +449,7 @@ export const banUser = asyncHandler(async (req: AuthRequest, res: Response) => {
 
       await revokeAllUserSessions(user.id)
 
+      // ดึง supervisor ครั้งเดียว ใช้ร่วมทั้ง audit log และ email alert
       const supervisor = await prisma.user.findUnique({
         where: { uuid: req.user?.uuid },
       })
@@ -410,14 +461,10 @@ export const banUser = asyncHandler(async (req: AuthRequest, res: Response) => {
         supervisor?.id,
       )
 
-      const supervisorUser = await prisma.user.findUnique({
-        where: { uuid: req.user?.uuid },
-      })
-
-      if (supervisorUser) {
+      if (supervisor) {
         await sendUserActionAlert(
-          supervisorUser.email,
-          `${supervisorUser.firstname} ${supervisorUser.lastname}`,
+          supervisor.email,
+          `${supervisor.firstname} ${supervisor.lastname}`,
           user.email,
           `${user.firstname} ${user.lastname}`,
           'BAN_USER',
@@ -483,6 +530,7 @@ export const unbanUser = asyncHandler(
           data: { status: 'Active' },
         })
 
+        // ดึง supervisor ครั้งเดียว ใช้ร่วมทั้ง audit log และ email alert
         const supervisor = await prisma.user.findUnique({
           where: { uuid: req.user?.uuid },
         })
@@ -494,14 +542,10 @@ export const unbanUser = asyncHandler(
           supervisor?.id,
         )
 
-        const supervisorUser = await prisma.user.findUnique({
-          where: { uuid: req.user?.uuid },
-        })
-
-        if (supervisorUser) {
+        if (supervisor) {
           await sendUserActionAlert(
-            supervisorUser.email,
-            `${supervisorUser.firstname} ${supervisorUser.lastname}`,
+            supervisor.email,
+            `${supervisor.firstname} ${supervisor.lastname}`,
             user.email,
             `${user.firstname} ${user.lastname}`,
             'UNBAN_USER',
@@ -574,6 +618,7 @@ export const deleteUser = asyncHandler(
           where: { uuid },
         })
 
+        // ดึง supervisor ครั้งเดียว ใช้ร่วมทั้ง audit log และ email alert
         const supervisor = await prisma.user.findUnique({
           where: { uuid: req.user?.uuid },
         })
@@ -585,14 +630,10 @@ export const deleteUser = asyncHandler(
           supervisor?.id,
         )
 
-        const supervisorUser = await prisma.user.findUnique({
-          where: { uuid: req.user?.uuid },
-        })
-
-        if (supervisorUser) {
+        if (supervisor) {
           await sendUserActionAlert(
-            supervisorUser.email,
-            `${supervisorUser.firstname} ${supervisorUser.lastname}`,
+            supervisor.email,
+            `${supervisor.firstname} ${supervisor.lastname}`,
             user.email,
             `${user.firstname} ${user.lastname}`,
             'DELETE_USER',

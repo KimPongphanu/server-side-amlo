@@ -48,6 +48,16 @@ export const authMiddleware = async (
       role: string
     }
 
+    // 🌟 ตรวจสอบ JWT Blacklist (token ที่ถูก logout แล้ว)
+    const isBlacklisted = await prisma.jwtBlacklist.findUnique({
+      where: { token },
+    })
+    if (isBlacklisted) {
+      res.clearCookie('token')
+      res.status(401).json({ message: 'Token ถูกยกเลิกแล้ว กรุณาเข้าสู่ระบบใหม่' })
+      return
+    }
+
     // 🌟 เช็คสถานะผู้ใช้จาก Database (ban / forcePasswordReset)
     const user = await prisma.user.findUnique({
       where: { uuid: decoded.uuid },

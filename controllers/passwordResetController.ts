@@ -50,23 +50,29 @@ export const resetPassword = asyncHandler(
     }
 
     // Verify OTP if provided (save id for later, don't mark used yet)
-    let verifiedOtpId: number | null = null
+    let verifiedOtpId: string | null = null
     if (otp) {
-      const emailOtp = await prisma.emailOtp.findFirst({
+      const emailOtps = await prisma.email_otps.findMany({
         where: {
           email: email.toLowerCase(),
-          otp,
           used: false,
           expiresAt: { gt: new Date() },
         },
       })
 
-      if (!emailOtp) {
+      let isOtpValid = false
+      for (const record of emailOtps) {
+        if (await bcrypt.compare(otp, record.otp)) {
+          verifiedOtpId = record.id
+          isOtpValid = true
+          break
+        }
+      }
+
+      if (!isOtpValid) {
         res.status(400).json({ message: 'Invalid or expired OTP' })
         return
       }
-
-      verifiedOtpId = emailOtp.id
     }
 
     // Verify reset token from recovery key flow
@@ -120,7 +126,7 @@ export const resetPassword = asyncHandler(
 
     // 🌟 Mark OTP as used ONLY after all validations pass and password is saved
     if (verifiedOtpId) {
-      await prisma.emailOtp.update({
+      await prisma.email_otps.update({
         where: { id: verifiedOtpId },
         data: { used: true },
       })

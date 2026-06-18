@@ -55,23 +55,6 @@ const validatePasswordStrength = (
   return null
 }
 
-const checkPasswordHistory = async (
-  userId: number,
-  newPasswordHash: string,
-): Promise<boolean> => {
-  const history = await prisma.passwordHistory.findMany({
-    where: { userId },
-    orderBy: { createdAt: 'desc' },
-    take: 3,
-  })
-
-  for (const record of history) {
-    const isMatch = await bcrypt.compare(newPasswordHash, record.passwordHash)
-    if (isMatch) return false
-  }
-  return true
-}
-
 const addToPasswordHistory = async (
   userId: number,
   passwordHash: string,
@@ -185,26 +168,40 @@ export const createAdmin = asyncHandler(
 
 export const getAdmins = asyncHandler(
   async (req: AuthRequest, res: Response) => {
-    const admins = await prisma.user.findMany({
-      where: { role: 'ADMIN' },
-      select: {
-        id: true,
-        uuid: true,
-        email: true,
-        firstname: true,
-        lastname: true,
-        role: true,
-        twoFactorEnabled: true,
-        twoFactorMethod: true,
-        createdAt: true,
-        recentOnline: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    })
+    const page = parseInt(req.query.page as string) || 1
+    const limit = parseInt(req.query.limit as string) || 10
+    const skip = (page - 1) * limit
+
+    const where = { role: 'ADMIN' }
+
+    const [admins, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          uuid: true,
+          email: true,
+          firstname: true,
+          lastname: true,
+          role: true,
+          twoFactorEnabled: true,
+          twoFactorMethod: true,
+          createdAt: true,
+          recentOnline: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.user.count({ where }),
+    ])
 
     res.status(200).json({
       success: true,
       count: admins.length,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
       data: admins,
     })
   },
@@ -394,11 +391,6 @@ export const banAdmin = asyncHandler(
           return
         }
 
-        if (admin.role === 'SUPERVISOR') {
-          res.status(403).json({ message: 'Cannot ban supervisor account' })
-          return
-        }
-
         const updatedAdmin = await prisma.user.update({
           where: { uuid },
           data: { status: 'Inactive' },
@@ -417,14 +409,10 @@ export const banAdmin = asyncHandler(
           supervisor?.id,
         )
 
-        const supervisorUser = await prisma.user.findUnique({
-          where: { uuid: req.user?.uuid },
-        })
-
-        if (supervisorUser) {
+        if (supervisor) {
           await sendUserActionAlert(
-            supervisorUser.email,
-            `${supervisorUser.firstname} ${supervisorUser.lastname}`,
+            supervisor.email,
+            `${supervisor.firstname} ${supervisor.lastname}`,
             admin.email,
             `${admin.firstname} ${admin.lastname}`,
             'BAN_ADMIN',
@@ -502,14 +490,10 @@ export const unbanAdmin = asyncHandler(
           supervisor?.id,
         )
 
-        const supervisorUser = await prisma.user.findUnique({
-          where: { uuid: req.user?.uuid },
-        })
-
-        if (supervisorUser) {
+        if (supervisor) {
           await sendUserActionAlert(
-            supervisorUser.email,
-            `${supervisorUser.firstname} ${supervisorUser.lastname}`,
+            supervisor.email,
+            `${supervisor.firstname} ${supervisor.lastname}`,
             admin.email,
             `${admin.firstname} ${admin.lastname}`,
             'UNBAN_ADMIN',
@@ -588,14 +572,10 @@ export const deleteAdmin = asyncHandler(
           supervisor?.id,
         )
 
-        const supervisorUser = await prisma.user.findUnique({
-          where: { uuid: req.user?.uuid },
-        })
-
-        if (supervisorUser) {
+        if (supervisor) {
           await sendUserActionAlert(
-            supervisorUser.email,
-            `${supervisorUser.firstname} ${supervisorUser.lastname}`,
+            supervisor.email,
+            `${supervisor.firstname} ${supervisor.lastname}`,
             admin.email,
             `${admin.firstname} ${admin.lastname}`,
             'DELETE_ADMIN',
