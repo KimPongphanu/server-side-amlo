@@ -29,30 +29,38 @@ export const generateEmailOTP = async (email: string): Promise<void> => {
   const otp = Math.floor(100000 + Math.random() * 900000).toString()
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000)
 
+  const hashedOtp = await bcrypt.hash(otp, 12)
+
   await prisma.email_otps.create({
     data: {
       email: email.toLowerCase(),
-      otp,
+      otp: hashedOtp,
       expiresAt,
       used: false,
     },
   })
 
-  // 🔴 LOG OTP TO CONSOLE FOR DEVELOPMENT (SMTP may not be configured)
-  const separator = '='.repeat(60)
-  console.log(separator)
-  console.log(`🔐 [OTP] Email: ${email}`)
-  console.log(`🔐 [OTP] Code:  ${otp}`)
-  console.log(`🔐 [OTP] Expires at: ${expiresAt.toISOString()}`)
-  console.log(`🔐 [OTP] Valid for: 5 minutes`)
-  console.log(separator)
+  // 🔴 LOG OTP TO CONSOLE FOR DEVELOPMENT ONLY (ห้าม log ใน Production)
+  if (process.env.NODE_ENV !== 'production') {
+    const separator = '='.repeat(60)
+    console.log(separator)
+    console.log(`🔐 [OTP] Email: ${email}`)
+    console.log(`🔐 [OTP] Code:  ${otp}`)
+    console.log(`🔐 [OTP] Expires at: ${expiresAt.toISOString()}`)
+    console.log(`🔐 [OTP] Valid for: 5 minutes`)
+    console.log(separator)
+  }
 
   try {
     await sendOTPEmail(email, otp, 5)
     console.log(`[OTP] Email sent successfully to ${email}`)
   } catch (err) {
-    console.log(`[OTP] Email sending failed (SMTP not configured).`)
-    console.log(`[OTP] Use the OTP code from console above: ${otp}`)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[OTP] Email sending failed (SMTP not configured).`)
+      console.log(`[OTP] Use the OTP code from console above: ${otp}`)
+    } else {
+      console.error(`[OTP] Email sending failed for ${email}`)
+    }
   }
 }
 
@@ -60,23 +68,26 @@ export const verifyEmailOTP = async (
   email: string,
   otp: string,
 ): Promise<boolean> => {
-  const record = await prisma.email_otps.findFirst({
+  const records = await prisma.email_otps.findMany({
     where: {
       email: email.toLowerCase(),
-      otp,
       used: false,
       expiresAt: { gt: new Date() },
     },
   })
 
-  if (!record) return false
+  for (const record of records) {
+    const isMatch = await bcrypt.compare(otp, record.otp)
+    if (isMatch) {
+      await prisma.email_otps.update({
+        where: { id: record.id },
+        data: { used: true },
+      })
+      return true
+    }
+  }
 
-  await prisma.email_otps.update({
-    where: { id: record.id },
-    data: { used: true },
-  })
-
-  return true
+  return false
 }
 
 export const generateRecoveryKeys = async (
@@ -84,13 +95,15 @@ export const generateRecoveryKeys = async (
 ): Promise<string[]> => {
   const recoveryKeyStrings: string[] = []
 
+  await prisma.recoveryKey.deleteMany({ where: { userId } })
+
   for (let i = 0; i < 8; i++) {
     const key = crypto.randomBytes(8).toString('hex').toUpperCase()
     const formatted = `${key.slice(0, 4)}-${key.slice(4, 8)}-${key.slice(8, 12)}-${key.slice(12, 16)}`
     recoveryKeyStrings.push(formatted)
 
-    // Use bcrypt for consistency with seed.ts (which also uses bcrypt)
-    const hashedKey = await bcrypt.hash(key, 12)
+    // Use bcrypt with 8 rounds to prevent CPU exhaustion
+    const hashedKey = await bcrypt.hash(key, 8)
     await prisma.recoveryKey.create({
       data: {
         userId,

@@ -42,6 +42,8 @@ interface VerifyOTPBody {
   tempToken?: string
 }
 
+export const SALT_ROUNDS = 10
+
 export const setup2FA = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const user = await prisma.user.findUnique({

@@ -76,7 +76,7 @@ model AuditLog {
   userAgent String
   details   String?
   createdAt DateTime @default(now())
-  user      User?    @relation(fields: [userId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model FailedLoginAttempt {
@@ -87,7 +87,7 @@ model FailedLoginAttempt {
   lastAttempt DateTime  @default(now())
   lockedUntil DateTime?
   userId      Int?
-  user        User?     @relation(fields: [userId], references: [id])
+  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Department {

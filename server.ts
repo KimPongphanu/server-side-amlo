@@ -6,6 +6,7 @@ import express, { Express, Request, Response } from 'express'
 import cron from 'node-cron' // 🌟 นำเข้า node-cron เข้ามาจัดการรอบเวลาทำงานเบื้องหลัง
 import path from 'path'
 import { globalErrorHandler } from './middlewares/errorHandler'
+import { validateAndUpdateSession } from './middlewares/session' // 🌟 Mount session validation
 
 import prisma from './lib/prisma' // 🌟 นำเข้า prisma client เพื่อสั่งคำสั่งลบข้อมูลโดยตรง
 import { apiLimiter } from './middlewares/rateLimiter'
@@ -34,6 +35,7 @@ app.set('trust proxy', 1) // trust first proxy (Nginx, Cloudflare, etc.)
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(cookieParser())
+app.use(validateAndUpdateSession) // 🌟 Validate and update session activity
 
 const allowedOrigins = [
   'http://localhost:5173',
@@ -147,6 +149,22 @@ cron.schedule('0 0 * * *', async () => {
     )
   } catch (error) {
     console.error('[Cron Job Error] Failed to clean expired audit logs:', error)
+  }
+})
+
+// ── 6. ลบ JWT Blacklist ที่หมดอายุแล้ว (ทุก 1 ชั่วโมง) ──
+cron.schedule('0 * * * *', async () => {
+  try {
+    // Token อายุ 1 วัน ลบ token ที่เก่ากว่า 24 ชั่วโมง
+    const cutOff = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    const result = await prisma.jwtBlacklist.deleteMany({
+      where: { createdAt: { lt: cutOff } },
+    })
+    if (result.count > 0) {
+      console.log(`[Cron Job] Cleaned ${result.count} expired JWT blacklist entries.`)
+    }
+  } catch (error) {
+    console.error('[Cron Job Error] Failed to clean JWT blacklist:', error)
   }
 })
 
