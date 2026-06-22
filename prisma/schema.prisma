@@ -157,6 +157,31 @@ model slider_images {
   createdAt DateTime @default(now())
 }
 
+model banners {
+  id        Int      @id @default(autoincrement())
+  image_url String
+  title     String   @default("")
+  link_url  String   @default("")
+  order     Int      @default(0)
+  isShow    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model splash_popups {
+  id        Int      @id @default(autoincrement())
+  image_url String
+  title     String   @default("")
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model site_settings {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     String   @default("")
+  updatedAt DateTime @updatedAt
+}
+
 model SupervisorRequest {
   id          Int      @id @default(autoincrement())
   actionType  String   // 'BAN' | 'DELETE' | 'FORCE_RESET'

@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs'
 import { Request, Response } from 'express'
 import asyncHandler from 'express-async-handler'
 import jwt from 'jsonwebtoken'
+import speakeasy from 'speakeasy'
 import prisma from '../lib/prisma'
 import { sendEmail } from '../services/emailService'
 import { logAudit } from '../utils/auditLogger'
@@ -11,13 +12,14 @@ import { getClientMetadata } from '../utils/ipSelector'
 interface ResetPasswordBody {
   email: string
   otp?: string
+  totp?: string
   resetToken?: string
   newPassword: string
 }
 
 export const resetPassword = asyncHandler(
   async (req: Request, res: Response) => {
-    const { email, otp, resetToken, newPassword } =
+    const { email, otp, totp, resetToken, newPassword } =
       req.body as ResetPasswordBody
     const { ipAddress, userAgent } = getClientMetadata(req)
 
@@ -26,8 +28,12 @@ export const resetPassword = asyncHandler(
       return
     }
 
-    if ((!otp || otp === '') && (!resetToken || resetToken === '')) {
-      res.status(400).json({ message: 'OTP or reset token is required' })
+    if (
+      (!otp || otp === '') &&
+      (!totp || totp === '') &&
+      (!resetToken || resetToken === '')
+    ) {
+      res.status(400).json({ message: 'OTP, TOTP, or reset token is required' })
       return
     }
 
@@ -47,6 +53,29 @@ export const resetPassword = asyncHandler(
     if (!user) {
       res.status(404).json({ message: 'User not found' })
       return
+    }
+
+    // Verify TOTP (2FA Authenticator) if provided
+    let verifiedTotp = false
+    if (totp) {
+      if (!user.twoFactorSecret) {
+        res
+          .status(400)
+          .json({ message: 'ผู้ใช้ยังไม่ได้ตั้งค่า 2FA Authenticator' })
+        return
+      }
+
+      verifiedTotp = speakeasy.totp.verify({
+        secret: user.twoFactorSecret,
+        encoding: 'base32',
+        token: totp,
+        window: 1,
+      })
+
+      if (!verifiedTotp) {
+        res.status(400).json({ message: 'รหัส 2FA ไม่ถูกต้อง' })
+        return
+      }
     }
 
     // Verify OTP if provided (save id for later, don't mark used yet)
@@ -129,7 +158,7 @@ export const resetPassword = asyncHandler(
     await logAudit(
       req,
       'PASSWORD_RESET_SUCCESS',
-      `Password reset successfully for user: ${user.email}`,
+      `Password reset successfully for user: ${user.email}${verifiedTotp ? ' (via 2FA)' : otp ? ' (via email OTP)' : resetToken ? ' (via recovery key)' : ''}`,
       user.id,
     )
 

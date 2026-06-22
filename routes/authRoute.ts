@@ -14,6 +14,7 @@ import {
   unbanUser,
   updateMyProfile,
 } from '../controllers/authController'
+import { checkEmail } from '../controllers/checkEmailController'
 import { emergencyAction } from '../controllers/emergencyController'
 import {
   forceResetUserPassword,
@@ -87,6 +88,12 @@ router.delete('/users/:uuid', auth, requireSupervisor, deleteUser)
  * @DESC    อัปเดตสถานะออนไลน์ (ยิงทุก 5 นาที)
  */
 router.post('/heartbeat', auth, heartbeat)
+
+/**
+ * @ROUTE   POST /api/auth/check-email
+ * @DESC    Check if email exists and return user role
+ */
+router.post('/check-email', checkEmail)
 
 /**
  * @ROUTE   POST /api/auth/reset-password

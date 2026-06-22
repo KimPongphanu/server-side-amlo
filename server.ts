@@ -13,12 +13,15 @@ import adminRoutes from './routes/adminRoute'
 import auditRoutes from './routes/auditRoute'
 import authRoutes from './routes/authRoute'
 import backupRoutes from './routes/backupRoute'
+import bannerRoutes from './routes/bannerRoute'
 import commentRoutes from './routes/commentRoute'
 import contactRoutes from './routes/contactRoute'
 import departmentRoutes from './routes/departmentRoute'
 import fileRoutes from './routes/fileRoute'
+import footerSettingRoutes from './routes/footerSettingRoute'
 import newsRoutes from './routes/newsRoute'
 import sliderRoutes from './routes/sliderRoute'
+import splashPopupRoutes from './routes/splashPopupRoute'
 import supervisorRequestRoutes from './routes/supervisorRequestRoute'
 import twoFactorRoutes from './routes/twoFactorRoute'
 import uploadRoutes from './routes/uploadRoute'
@@ -59,13 +62,18 @@ app.use(
       }
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'Accept'],
   }),
 )
 
 // ── 2. ประกาศใช้ Static Files และ Rate Limiter ส่วนกลาง ──
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')))
+import fs from 'fs'
+const UPLOADS_DIR = fs.existsSync('/app/uploads')
+  ? '/app/uploads'
+  : path.join(__dirname, 'uploads')
+app.use('/uploads', express.static(UPLOADS_DIR))
+console.log('[Uploads] Serving from:', UPLOADS_DIR)
 app.use('/api', apiLimiter)
 
 // ── 3. กลุ่ม Route บริการต่างๆ ──
@@ -78,7 +86,10 @@ app.use('/api/files', fileRoutes)
 app.use('/api/contact', contactRoutes)
 app.use('/api/comments', commentRoutes)
 app.use('/api/audit', auditRoutes)
+app.use('/api/banners', bannerRoutes)
+app.use('/api/settings', footerSettingRoutes)
 app.use('/api/slider', sliderRoutes)
+app.use('/api/splash-popups', splashPopupRoutes)
 app.use('/api/2fa', twoFactorRoutes)
 app.use('/api/supervisor-request', supervisorRequestRoutes)
 app.use('/api/backups', backupRoutes)
