@@ -1,14 +1,25 @@
+// utils/ipSelector.ts
 import { Request } from 'express'
 
-export const getClientMetadata = (req: Request) => {
+export interface ClientMetadata {
+  ipAddress: string // Public IP (from x-forwarded-for header)
+  serverIp: string // Private IP (what Express sees as req.ip)
+  userAgent: string
+}
+
+export const getClientMetadata = (req: Request): ClientMetadata => {
   // ดักจับ IP จริงจาก Header หากระบบรันหลัง Nginx, Cloudflare, Vercel หรือ Render
   const forwardedFor = req.headers['x-forwarded-for']
-  const ipAddress = Array.isArray(forwardedFor)
-    ? forwardedFor[0]
-    : forwardedFor?.split(',')[0] || req.ip || '0.0.0.0'
+  const forwardedList: string[] = Array.isArray(forwardedFor)
+    ? forwardedFor
+    : (forwardedFor?.split(',') || []).map((s) => s.trim())
 
-  // ดึงประเภทอุปกรณ์/เบราว์เซอร์
-  const userAgent = req.headers['user-agent'] || 'Unknown Device'
-
-  return { ipAddress, userAgent }
+  return {
+    // Public IP: ตัวแรกใน x-forwarded-for (IP จริงของผู้ใช้)
+    ipAddress: forwardedList[0] || req.ip || '0.0.0.0',
+    // Private IP: req.ip (IP ที่ Express server เห็น, เช่น 172.x.x.x ใน Docker)
+    serverIp: req.ip || '0.0.0.0',
+    // User Agent
+    userAgent: (req.headers['user-agent'] as string) || 'Unknown Device',
+  }
 }

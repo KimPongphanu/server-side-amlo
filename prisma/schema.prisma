@@ -73,6 +73,8 @@ model AuditLog {
   userId    Int?
   action    String
   ipAddress String
+  serverIp  String   @default("")
+  region    String?
   userAgent String
   details   String?
   createdAt DateTime @default(now())
