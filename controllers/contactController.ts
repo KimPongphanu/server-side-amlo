@@ -27,6 +27,22 @@ export const createContact = asyncHandler(
       })
       return
     }
+    const recentContact = await prisma.contact_requests.findFirst({
+      where: {
+        email: email.trim().toLowerCase(),
+        created_at: {
+          gt: new Date(Date.now() - 2 * 60 * 1000) // 2 minutes ago
+        }
+      }
+    })
+
+    if (recentContact) {
+      res.status(429).json({
+        success: false,
+        message: 'คุณส่งข้อความติดต่อถี่เกินไป กรุณารอ 2 นาทีแล้วลองใหม่อีกครั้ง'
+      })
+      return
+    }
 
     // บันทึกลงฐานข้อมูล
     const newRequest = await prisma.contact_requests.create({

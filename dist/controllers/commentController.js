@@ -1,0 +1,99 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.updateComment = exports.getComments = exports.createComment = void 0;
+const express_async_handler_1 = __importDefault(require("express-async-handler"));
+const prisma_1 = __importDefault(require("../lib/prisma"));
+const auditLogger_1 = require("../utils/auditLogger");
+const ipSelector_1 = require("../utils/ipSelector");
+exports.createComment = (0, express_async_handler_1.default)(async (req, res) => {
+    // 🌟 2. ดักดึง IP Address และ User Agent ของประชาชนที่ส่งฟอร์มเข้ามาก่อน
+    const { ipAddress, userAgent } = (0, ipSelector_1.getClientMetadata)(req);
+    const { star, msg } = req.body;
+    const urlRegex = /(https?:\/\/[^\s]+)|(www\.[^\s]+)/i;
+    if (urlRegex.test(msg)) {
+        res.status(400).json({
+            success: false,
+            message: 'ไม่อนุญาตให้แนบลิงก์ในความคิดเห็น',
+        });
+        return;
+    }
+    // Validation ความถูกต้องเบื้องต้นของข้อมูล
+    if (star === undefined || !msg) {
+        res.status(400).json({
+            success: false,
+            message: 'กรุณากรอกข้อมูลคะแนนและข้อความให้ครบถ้วน',
+        });
+        return;
+    }
+    const parsedStar = parseInt(star);
+    if (isNaN(parsedStar) || parsedStar < 1 || parsedStar > 5) {
+        res.status(400).json({
+            success: false,
+            message: 'คะแนนความพึงพอใจต้องอยู่ระหว่าง 1 ถึง 5 ดาวเท่านั้น',
+        });
+        return;
+    }
+    if (msg.length > 500) {
+        res.status(400).json({
+            success: false,
+            message: 'ข้อความความคิดเห็นต้องยาวไม่เกิน 500 ตัวอักษร',
+        });
+        return;
+    }
+    // บันทึกความคิดเห็นลงฐานข้อมูล PostgreSQL ผ่าน Prisma
+    const newComment = await prisma_1.default.comment_items.create({
+        data: {
+            star: parsedStar,
+            msg: msg.trim(),
+            isShow: parsedStar >= 4,
+            updatedAt: new Date(),
+        },
+    });
+    await (0, auditLogger_1.logAudit)(req, 'CREATE_COMMENT_SUCCESS', `Public comment submitted successfully (Rating: ${parsedStar} stars, Comment ID: ${newComment.id})`, null);
+    res.status(201).json({
+        success: true,
+        message: 'บันทึกความคิดเห็นสำเร็จ ขอบคุณสำหรับคำแนะนำ',
+        data: newComment,
+    });
+});
+exports.getComments = (0, express_async_handler_1.default)(async (req, res) => {
+    const { all } = req.query;
+    const whereCondition = {};
+    if (all !== 'true') {
+        whereCondition.isShow = true;
+    }
+    const comments = await prisma_1.default.comment_items.findMany({
+        where: whereCondition,
+        orderBy: {
+            createdAt: 'desc',
+        },
+    });
+    res.status(200).json({
+        success: true,
+        data: comments,
+    });
+});
+exports.updateComment = (0, express_async_handler_1.default)(async (req, res) => {
+    const { id, isShow } = req.body;
+    if (!id || isShow === undefined) {
+        res.status(400).json({
+            success: false,
+            message: 'กรุณาระบุข้อมูลรหัสไอดีและสถานะการแสดงผลให้ครบถ้วน',
+        });
+        return;
+    }
+    // จัดการ Error กรณีไม่พบ ID (P2025) ได้ด้วย Global Error Handler ในอนาคต
+    const updatedComment = await prisma_1.default.comment_items.update({
+        where: { id },
+        data: { isShow: !!isShow },
+    });
+    res.status(200).json({
+        success: true,
+        message: 'อัปเดตสถานะความคิดเห็นเรียบร้อยแล้ว',
+        data: updatedComment,
+    });
+});
+//# sourceMappingURL=commentController.js.map

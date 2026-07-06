@@ -2,9 +2,11 @@
 import { NextFunction, Request, Response } from 'express'
 import jwt from 'jsonwebtoken'
 import prisma from '../lib/prisma'
+import { validateAndUpdateSession } from './session'
 
 export interface AuthRequest extends Request {
   user?: {
+    id: number
     uuid: string
     email: string
     firstName: string
@@ -61,7 +63,7 @@ export const authMiddleware = async (
     // 🌟 เช็คสถานะผู้ใช้จาก Database (ban / forcePasswordReset)
     const user = await prisma.user.findUnique({
       where: { uuid: decoded.uuid },
-      select: { status: true, forcePasswordReset: true },
+      select: { id: true, status: true, forcePasswordReset: true },
     })
 
     if (!user) {
@@ -76,8 +78,9 @@ export const authMiddleware = async (
       return
     }
 
-    req.user = decoded
-    next()
+    req.user = { ...decoded, id: user.id }
+
+    await validateAndUpdateSession(req, res, next)
   } catch (error) {
     res.clearCookie('token')
     res.status(401).json({ message: 'Invalid Token' })

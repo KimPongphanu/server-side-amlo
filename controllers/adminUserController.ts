@@ -555,11 +555,10 @@ export const deleteAdmin = asyncHandler(
           return
         }
 
-        await revokeAllUserSessions(admin.id)
-
-        await prisma.user.delete({
-          where: { uuid },
-        })
+        await prisma.$transaction([
+          prisma.session.deleteMany({ where: { userId: admin.id } }),
+          prisma.user.delete({ where: { uuid } }),
+        ])
 
         const supervisor = await prisma.user.findUnique({
           where: { uuid: req.user?.uuid },

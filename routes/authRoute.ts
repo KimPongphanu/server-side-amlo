@@ -93,7 +93,7 @@ router.post('/heartbeat', auth, heartbeat)
  * @ROUTE   POST /api/auth/check-email
  * @DESC    Check if email exists and return user role
  */
-router.post('/check-email', checkEmail)
+router.post('/check-email', loginLimiter, checkEmail)
 
 /**
  * @ROUTE   POST /api/auth/reset-password

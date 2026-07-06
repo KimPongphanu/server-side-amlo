@@ -1,6 +1,9 @@
 import { Request, Response } from 'express'
 import asyncHandler from 'express-async-handler'
 import DOMPurify from 'isomorphic-dompurify'
+import fs from 'fs/promises'
+import path from 'path'
+import { validateMagicBytes } from '../utils/fileValidator'
 import prisma from '../lib/prisma'
 import { AuthRequest } from '../middlewares/auth'
 import { logAudit } from '../utils/auditLogger'
@@ -47,6 +50,16 @@ export const createDepartment = asyncHandler(
     for (const file of allFiles) {
       if (!allowedMimeTypes.includes(file.mimetype)) {
         res.status(400).json({ message: `ไฟล์ ${file.originalname} ไม่รองรับ` })
+        const filePath = path.join(process.cwd(), file.path)
+        await fs.unlink(filePath).catch(() => {})
+        return
+      }
+      
+      const filePath = path.join(process.cwd(), file.path)
+      const isValid = await validateMagicBytes(filePath, file.mimetype)
+      if (!isValid) {
+        res.status(400).json({ message: `ไฟล์ ${file.originalname} ไม่ถูกต้องหรือเป็นไฟล์อันตราย` })
+        await fs.unlink(filePath).catch(() => {})
         return
       }
     }
@@ -217,6 +230,16 @@ export const updateDepartment = asyncHandler(
     for (const file of allFiles) {
       if (!allowedMimeTypes.includes(file.mimetype)) {
         res.status(400).json({ message: `ไฟล์ ${file.originalname} ไม่รองรับ` })
+        const filePath = path.join(process.cwd(), file.path)
+        await fs.unlink(filePath).catch(() => {})
+        return
+      }
+
+      const filePath = path.join(process.cwd(), file.path)
+      const isValid = await validateMagicBytes(filePath, file.mimetype)
+      if (!isValid) {
+        res.status(400).json({ message: `ไฟล์ ${file.originalname} ไม่ถูกต้องหรือเป็นไฟล์อันตราย` })
+        await fs.unlink(filePath).catch(() => {})
         return
       }
     }

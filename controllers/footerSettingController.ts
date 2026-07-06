@@ -1,9 +1,10 @@
+import asyncHandler from 'express-async-handler'
 import { NextFunction, Request, Response } from 'express'
 import prisma from '../lib/prisma'
 import { AppError } from '../utils/AppError'
 
 // GET /api/settings — ดึง settings ทั้งหมด (สาธารณะ)
-export const getAllSettings = async (
+export const getAllSettings = asyncHandler(async (
   req: Request,
   res: Response,
   next: NextFunction,
@@ -14,10 +15,10 @@ export const getAllSettings = async (
     map[s.key] = s.value
   })
   res.status(200).json({ success: true, data: map })
-}
+})
 
 // PUT /api/settings — อัปเดต settings (admin เท่านั้น)
-export const updateSettings = async (
+export const updateSettings = asyncHandler(async (
   req: Request,
   res: Response,
   next: NextFunction,
@@ -56,4 +57,4 @@ export const updateSettings = async (
   res
     .status(200)
     .json({ success: true, data: map, message: 'บันทึกการตั้งค่าสำเร็จ' })
-}
+})

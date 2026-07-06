@@ -210,13 +210,6 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
     return
   }
 
-  // Clear failed attempts upon successful login
-  if (failedAttempt) {
-    await prisma.failedLoginAttempt.deleteMany({
-      where: { email: email.toLowerCase() }
-    })
-  }
-
   // Check if user account is banned
   if (user.status === 'Inactive') {
     await logAudit(
@@ -229,6 +222,13 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
       .status(403)
       .json({ message: 'บัญชีนี้ถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ' })
     return
+  }
+
+  // Clear failed attempts upon successful login
+  if (failedAttempt) {
+    await prisma.failedLoginAttempt.deleteMany({
+      where: { email: email.toLowerCase() }
+    })
   }
 
   const secret = process.env.JWT_SECRET
@@ -284,7 +284,7 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
 
   res.cookie('token', token, {
     httpOnly: true,
-    secure: false, // MUST be false for localhost (no HTTPS)
+    secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax', // 'strict' might block redirects
     maxAge: 24 * 60 * 60 * 1000,
     path: '/', // Ensure cookie is available for all paths
@@ -314,7 +314,13 @@ export const logoutUser = asyncHandler(
     const token = req.cookies.token
 
     if (token) {
-      await prisma.jwtBlacklist.create({ data: { token } }).catch(console.error)
+      try {
+        await prisma.jwtBlacklist.create({ data: { token } })
+      } catch (err: any) {
+        if (err.code !== 'P2002') {
+          throw err
+        }
+      }
     }
 
     const user = await prisma.user.findUnique({
@@ -612,11 +618,10 @@ export const deleteUser = asyncHandler(
           return
         }
 
-        await revokeAllUserSessions(user.id)
-
-        await prisma.user.delete({
-          where: { uuid },
-        })
+        await prisma.$transaction([
+          prisma.session.deleteMany({ where: { userId: user.id } }),
+          prisma.user.delete({ where: { uuid } }),
+        ])
 
         // ดึง supervisor ครั้งเดียว ใช้ร่วมทั้ง audit log และ email alert
         const supervisor = await prisma.user.findUnique({

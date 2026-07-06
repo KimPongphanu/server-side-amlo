@@ -1,11 +1,13 @@
+import asyncHandler from 'express-async-handler'
 import { NextFunction, Request, Response } from 'express'
 import fs from 'fs/promises'
+import { validateMagicBytes } from '../utils/fileValidator'
 import path from 'path'
 import prisma from '../lib/prisma'
 import { AppError } from '../utils/AppError'
 
 // GET /api/splash-popups — ดึงทั้งหมด (admin)
-export const getAllPopups = async (
+export const getAllPopups = asyncHandler(async (
   req: Request,
   res: Response,
   next: NextFunction,
@@ -14,10 +16,10 @@ export const getAllPopups = async (
     orderBy: { createdAt: 'desc' },
   })
   res.status(200).json({ success: true, data: popups })
-}
+})
 
 // GET /api/splash-popups/active — ดึง popup ที่ active อยู่ (public)
-export const getActivePopup = async (
+export const getActivePopup = asyncHandler(async (
   req: Request,
   res: Response,
   next: NextFunction,
@@ -27,10 +29,10 @@ export const getActivePopup = async (
     orderBy: { createdAt: 'desc' },
   })
   res.status(200).json({ success: true, data: popup || null })
-}
+})
 
 // POST /api/splash-popups — สร้าง popup ใหม่
-export const createPopup = async (
+export const createPopup = asyncHandler(async (
   req: Request,
   res: Response,
   next: NextFunction,
@@ -48,6 +50,13 @@ export const createPopup = async (
     throw new AppError('รองรับเฉพาะไฟล์รูปภาพ JPG, PNG, WEBP เท่านั้น', 400)
   }
 
+  const filePath = path.join(process.cwd(), file.path)
+  const isValidFile = await validateMagicBytes(filePath, file.mimetype)
+  if (!isValidFile) {
+    await fs.unlink(filePath).catch(() => {})
+    throw new AppError('ไฟล์รูปภาพไม่ถูกต้องหรืออาจเป็นไฟล์อันตรายแฝงตัวมา', 400)
+  }
+
   const sanitizedFilename = file.filename.replace(/[^a-zA-Z0-9.\-_]/g, '')
   const title = typeof req.body.title === 'string' ? req.body.title.trim() : ''
 
@@ -59,10 +68,10 @@ export const createPopup = async (
   })
 
   res.status(201).json({ success: true, data: popup })
-}
+})
 
 // PUT /api/splash-popups/:id — อัปเดต popup (activate, deactivate, title)
-export const updatePopup = async (
+export const updatePopup = asyncHandler(async (
   req: Request,
   res: Response,
   next: NextFunction,
@@ -99,10 +108,10 @@ export const updatePopup = async (
   })
 
   res.status(200).json({ success: true, data: updated })
-}
+})
 
 // DELETE /api/splash-popups/:id — ลบ popup
-export const deletePopup = async (
+export const deletePopup = asyncHandler(async (
   req: Request,
   res: Response,
   next: NextFunction,
@@ -124,4 +133,4 @@ export const deletePopup = async (
 
   await prisma.splash_popups.delete({ where: { id } })
   res.status(200).json({ success: true, message: 'ลบ Popup สำเร็จ' })
-}
+})

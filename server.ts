@@ -6,9 +6,7 @@ import express, { Express, Request, Response } from 'express'
 import cron from 'node-cron' // 🌟 นำเข้า node-cron เข้ามาจัดการรอบเวลาทำงานเบื้องหลัง
 import path from 'path'
 import { globalErrorHandler } from './middlewares/errorHandler'
-import { validateAndUpdateSession } from './middlewares/session' // 🌟 Mount session validation
 import { setCharset } from './middlewares/setCharset'
-
 import prisma from './lib/prisma' // 🌟 นำเข้า prisma client เพื่อสั่งคำสั่งลบข้อมูลโดยตรง
 import { apiLimiter } from './middlewares/rateLimiter'
 import adminRoutes from './routes/adminRoute'
@@ -37,7 +35,6 @@ app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(cookieParser())
 app.use(setCharset)
-app.use(validateAndUpdateSession) // 🌟 Validate and update session activity
 
 const allowedOrigins = [
   'http://localhost:5173',
@@ -57,11 +54,9 @@ app.use(
         'http://localhost',
         'http://127.0.0.1',
       ]
-      console.log('[CORS] Request from origin:', origin)
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true)
       } else {
-        console.log('[CORS] Blocked origin:', origin)
         callback(new Error('Not allowed by CORS'))
       }
     },
@@ -77,7 +72,6 @@ const UPLOADS_DIR = fs.existsSync('/app/uploads')
   ? '/app/uploads'
   : path.join(__dirname, 'uploads')
 app.use('/uploads', express.static(UPLOADS_DIR))
-console.log('[Uploads] Serving from:', UPLOADS_DIR)
 app.use('/api', apiLimiter)
 
 // ── 3. กลุ่ม Route บริการต่างๆ ──

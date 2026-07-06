@@ -1,11 +1,13 @@
+import asyncHandler from 'express-async-handler'
 import { NextFunction, Request, Response } from 'express'
 import fs from 'fs/promises'
+import { validateMagicBytes } from '../utils/fileValidator'
 import path from 'path'
 import prisma from '../lib/prisma'
 import { AppError } from '../utils/AppError' // ถ้ามี custom error class
 
 // GET /api/slider - ดึงรายการสไลด์ทั้งหมด
-export const getAllSlides = async (
+export const getAllSlides = asyncHandler(async (
   req: Request,
   res: Response,
   next: NextFunction,
@@ -18,10 +20,10 @@ export const getAllSlides = async (
     success: true,
     data: slides,
   })
-}
+})
 
 // POST /api/slider - เพิ่มรูปภาพใหม่
-export const createSlide = async (
+export const createSlide = asyncHandler(async (
   req: Request,
   res: Response,
   next: NextFunction,
@@ -35,11 +37,16 @@ export const createSlide = async (
   // OWASP: Validate file type
   const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp']
   if (!allowedMimeTypes.includes(file.mimetype)) {
-    // ลบไฟล์ที่ไม่ได้รับอนุญาตทิ้ง
     const filePath = path.join(process.cwd(), file.path)
     await fs.unlink(filePath).catch(() => {})
-
     throw new AppError('รองรับเฉพาะไฟล์รูปภาพ JPG, PNG, WEBP เท่านั้น', 400)
+  }
+
+  const filePath = path.join(process.cwd(), file.path)
+  const isValidFile = await validateMagicBytes(filePath, file.mimetype)
+  if (!isValidFile) {
+    await fs.unlink(filePath).catch(() => {})
+    throw new AppError('ไฟล์รูปภาพไม่ถูกต้องหรืออาจเป็นไฟล์อันตรายแฝงตัวมา', 400)
   }
 
   // OWASP: Validate file size (เพิ่มเติมจาก multer limits)
@@ -71,10 +78,10 @@ export const createSlide = async (
     success: true,
     data: newSlide,
   })
-}
+})
 
 // PUT /api/slider/reorder - บันทึกลำดับใหม่
-export const reorderSlides = async (
+export const reorderSlides = asyncHandler(async (
   req: Request,
   res: Response,
   next: NextFunction,
@@ -131,10 +138,10 @@ export const reorderSlides = async (
     success: true,
     message: 'บันทึกลำดับสำเร็จ',
   })
-}
+})
 
 // DELETE /api/slider/:id - ลบสไลด์
-export const deleteSlide = async (
+export const deleteSlide = asyncHandler(async (
   req: Request,
   res: Response,
   next: NextFunction,
@@ -171,4 +178,4 @@ export const deleteSlide = async (
     success: true,
     message: 'ลบสไลด์สำเร็จ',
   })
-}
+})

@@ -87,7 +87,6 @@ export const setup2FA = asyncHandler(
     res.status(200).json({
       success: true,
       data: {
-        secret,
         otpauthUrl,
         qrCodeDataUrl: null,
       },
@@ -327,11 +326,17 @@ export const verify2FALogin = asyncHandler(
       return
     }
 
-    const decoded = require('jsonwebtoken').verify(
-      tempToken,
-      process.env.JWT_SECRET,
-    ) as {
-      userId: number
+    let decoded: { userId: number }
+    try {
+      decoded = require('jsonwebtoken').verify(
+        tempToken,
+        process.env.JWT_SECRET,
+      ) as {
+        userId: number
+      }
+    } catch (error) {
+      res.status(401).json({ message: '2FA session expired or invalid. Please login again.' })
+      return
     }
 
     const user = await prisma.user.findUnique({

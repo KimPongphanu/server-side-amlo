@@ -53,13 +53,13 @@ export const generateEmailOTP = async (email: string): Promise<void> => {
 
   try {
     await sendOTPEmail(email, otp, 5)
-    console.log(`[OTP] Email sent successfully to ${email}`)
+    console.log(`[OTP] Email sent successfully`)
   } catch (err) {
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[OTP] Email sending failed (SMTP not configured).`)
       console.log(`[OTP] Use the OTP code from console above: ${otp}`)
     } else {
-      console.error(`[OTP] Email sending failed for ${email}`)
+      console.error(`[OTP] Email sending failed`)
     }
   }
 }

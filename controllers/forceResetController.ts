@@ -50,10 +50,11 @@ export const forceResetUserPassword = asyncHandler(
     const otp = generateOTP()
     const expiresAt = new Date(Date.now() + OTP_EXPIRE_MINUTES * 60 * 1000)
 
+    const hashedOtp = await bcrypt.hash(otp, 12)
     await prisma.email_otps.create({
       data: {
         email: user.email.toLowerCase(),
-        otp,
+        otp: hashedOtp,
         expiresAt,
       },
     })
@@ -123,10 +124,11 @@ export const sendForceResetOTP = asyncHandler(
     const otp = generateOTP()
     const expiresAt = new Date(Date.now() + OTP_EXPIRE_MINUTES * 60 * 1000)
 
+    const hashedOtp = await bcrypt.hash(otp, 12)
     await prisma.email_otps.create({
       data: {
         email: user.email.toLowerCase(),
-        otp,
+        otp: hashedOtp,
         expiresAt,
       },
     })
@@ -172,10 +174,11 @@ export const resendForceResetOTP = asyncHandler(
     const otp = generateOTP()
     const expiresAt = new Date(Date.now() + OTP_EXPIRE_MINUTES * 60 * 1000)
 
+    const hashedOtp = await bcrypt.hash(otp, 12)
     await prisma.email_otps.create({
       data: {
         email: user.email.toLowerCase(),
-        otp,
+        otp: hashedOtp,
         expiresAt,
       },
     })
@@ -234,14 +237,21 @@ export const verifyForceResetOTP = asyncHandler(
     }
 
     // Verify OTP
-    const emailOtp = await prisma.email_otps.findFirst({
+    const emailOtps = await prisma.email_otps.findMany({
       where: {
         email: user.email.toLowerCase(),
-        otp,
         used: false,
         expiresAt: { gt: new Date() },
       },
     })
+
+    let emailOtp = null
+    for (const record of emailOtps) {
+      if (await bcrypt.compare(otp, record.otp)) {
+        emailOtp = record
+        break
+      }
+    }
 
     if (!emailOtp) {
       res.status(400).json({ message: 'รหัส OTP ไม่ถูกต้องหรือหมดอายุแล้ว' })

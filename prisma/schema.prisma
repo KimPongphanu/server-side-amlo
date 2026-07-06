@@ -191,10 +191,10 @@ model SupervisorRequest {
   status      String   @default("PENDING") // PENDING | APPROVED | REJECTED | EXPIRED
   
   requesterId Int
-  requester   User     @relation("requester", fields: [requesterId], references: [id])
+  requester   User     @relation("requester", fields: [requesterId], references: [id], onDelete: Cascade)
   
   targetId    Int
-  target      User     @relation("target", fields: [targetId], references: [id])
+  target      User     @relation("target", fields: [targetId], references: [id], onDelete: Cascade)
   
   createdAt   DateTime @default(now())
   respondedAt DateTime?

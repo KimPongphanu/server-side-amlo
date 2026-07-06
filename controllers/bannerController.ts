@@ -1,11 +1,13 @@
+import asyncHandler from 'express-async-handler'
 import { NextFunction, Request, Response } from 'express'
 import fs from 'fs/promises'
+import { validateMagicBytes } from '../utils/fileValidator'
 import path from 'path'
 import prisma from '../lib/prisma'
 import { AppError } from '../utils/AppError'
 
 // GET /api/banners — ดึงรายการ banners ทั้งหมด (เฉพาะ isShow = true สำหรับ public)
-export const getAllBanners = async (
+export const getAllBanners = asyncHandler(async (
   req: Request,
   res: Response,
   next: NextFunction,
@@ -22,10 +24,10 @@ export const getAllBanners = async (
     success: true,
     data: banners,
   })
-}
+})
 
 // POST /api/banners — เพิ่ม banner ใหม่
-export const createBanner = async (
+export const createBanner = asyncHandler(async (
   req: Request,
   res: Response,
   next: NextFunction,
@@ -41,6 +43,13 @@ export const createBanner = async (
     const filePath = path.join(process.cwd(), file.path)
     await fs.unlink(filePath).catch(() => {})
     throw new AppError('รองรับเฉพาะไฟล์รูปภาพ JPG, PNG, WEBP เท่านั้น', 400)
+  }
+
+  const filePath = path.join(process.cwd(), file.path)
+  const isValidFile = await validateMagicBytes(filePath, file.mimetype)
+  if (!isValidFile) {
+    await fs.unlink(filePath).catch(() => {})
+    throw new AppError('ไฟล์รูปภาพไม่ถูกต้องหรืออาจเป็นไฟล์อันตรายแฝงตัวมา', 400)
   }
 
   const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
@@ -74,10 +83,10 @@ export const createBanner = async (
     success: true,
     data: newBanner,
   })
-}
+})
 
 // PUT /api/banners/reorder — บันทึกลำดับใหม่
-export const reorderBanners = async (
+export const reorderBanners = asyncHandler(async (
   req: Request,
   res: Response,
   next: NextFunction,
@@ -125,10 +134,10 @@ export const reorderBanners = async (
     success: true,
     message: 'บันทึกลำดับสำเร็จ',
   })
-}
+})
 
 // PUT /api/banners/:id — อัปเดต title และ link_url
-export const updateBanner = async (
+export const updateBanner = asyncHandler(async (
   req: Request,
   res: Response,
   next: NextFunction,
@@ -162,10 +171,10 @@ export const updateBanner = async (
     success: true,
     data: updated,
   })
-}
+})
 
 // PATCH /api/banners/:id/toggle — เปิด/ปิด isShow
-export const toggleBannerVisibility = async (
+export const toggleBannerVisibility = asyncHandler(async (
   req: Request,
   res: Response,
   next: NextFunction,
@@ -190,10 +199,10 @@ export const toggleBannerVisibility = async (
     success: true,
     data: updated,
   })
-}
+})
 
 // DELETE /api/banners/:id — ลบ banner
-export const deleteBanner = async (
+export const deleteBanner = asyncHandler(async (
   req: Request,
   res: Response,
   next: NextFunction,
@@ -221,4 +230,4 @@ export const deleteBanner = async (
     success: true,
     message: 'ลบ Banner สำเร็จ',
   })
-}
+})

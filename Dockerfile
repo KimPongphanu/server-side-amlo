@@ -17,9 +17,10 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Generate Prisma client (use dummy DATABASE_URL for build-time config reading)
+# Generate Prisma client
+# Prisma 7: url is in prisma.config.ts, schema.prisma has no url
 ENV DATABASE_URL=postgresql://dummy:dummy@dummy:5432/dummy
-RUN npx prisma generate
+RUN npx prisma generate --config prisma.config.ts 2>/dev/null || npx prisma generate
 RUN npm run build
 
 # ---- Stage 2: Runner ----
