@@ -8,6 +8,7 @@ import prisma from '../lib/prisma'
 import { AuthRequest } from '../middlewares/auth'
 import { logAudit } from '../utils/auditLogger'
 import { getClientMetadata } from '../utils/ipSelector'
+import { translateToEnglish } from '../utils/translateService'
 
 interface GalleryResponseItem {
   id: number
@@ -91,10 +92,16 @@ export const createDepartment = asyncHandler(
       ...rawUrls.map((url) => ({ url, type: 'VIDEO' as const })),
     ]
 
+    // 🌟 แปลภาษาอังกฤษ
+    const title_en = await translateToEnglish(title)
+    const content_en = await translateToEnglish(sanitizedContent || '')
+
     const department = await prisma.department.create({
       data: {
         title,
+        title_en,
         content: sanitizedContent,
+        content_en,
         cover_image: coverImagePath,
         GalleryItem: { create: galleryData },
       },
@@ -286,11 +293,17 @@ export const updateDepartment = asyncHandler(
       }
     }
 
+    // 🌟 แปลภาษาอังกฤษ
+    const title_en = await translateToEnglish(title)
+    const content_en = await translateToEnglish(sanitizedContent || '')
+
     const updatedDept = await prisma.department.update({
       where: { id },
       data: {
         title,
+        title_en,
         content: sanitizedContent,
+        content_en,
         cover_image: coverImagePath,
         ...(galleryUpdateData && { GalleryItem: galleryUpdateData }),
       },

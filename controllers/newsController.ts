@@ -4,6 +4,7 @@ import DOMPurify from 'isomorphic-dompurify'
 import prisma from '../lib/prisma'
 import { AuthRequest } from '../middlewares/auth'
 import { logAudit } from '../utils/auditLogger'
+import { translateToEnglish } from '../utils/translateService'
 
 export const createNews = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -28,12 +29,20 @@ export const createNews = asyncHandler(
     const sanitizedContent = content ? DOMPurify.sanitize(content) : null
     const imagePath = `/uploads/${req.file.filename}`
 
+    // 🌟 แปลภาษาอังกฤษ
+    const title_en = await translateToEnglish(title)
+    const description_en = await translateToEnglish(description)
+    const content_en = await translateToEnglish(sanitizedContent)
+
     const news = await prisma.news.create({
       data: {
         type: type === 'PR' ? 'PR' : 'NEWS',
         title,
+        title_en,
         description,
+        description_en,
         content: sanitizedContent,
+        content_en,
         image_src: imagePath,
       },
     })
@@ -114,8 +123,11 @@ export const updateNews = asyncHandler(
 
     const updateData: {
       title?: string
+      title_en?: string | null
       description?: string
+      description_en?: string | null
       content?: string | null
+      content_en?: string | null
       image_src?: string
       isShow?: boolean
       views?: number
@@ -123,9 +135,18 @@ export const updateNews = asyncHandler(
       date?: Date
     } = {}
 
-    if (title !== undefined) updateData.title = title
-    if (description !== undefined) updateData.description = description
-    if (content !== undefined) updateData.content = sanitizedContent
+    if (title !== undefined) {
+      updateData.title = title
+      updateData.title_en = await translateToEnglish(title)
+    }
+    if (description !== undefined) {
+      updateData.description = description
+      updateData.description_en = await translateToEnglish(description)
+    }
+    if (content !== undefined) {
+      updateData.content = sanitizedContent
+      updateData.content_en = await translateToEnglish(sanitizedContent)
+    }
     if (isShow !== undefined) updateData.isShow = isShow === 'true' || isShow === true
     if (views !== undefined) updateData.views = parseInt(views)
     if (type !== undefined) updateData.type = type

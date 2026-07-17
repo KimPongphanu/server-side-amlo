@@ -95,8 +95,10 @@ model FailedLoginAttempt {
 model Department {
   id          Int           @id @default(autoincrement())
   title       String
+  title_en    String?
   cover_image String
   content     String?
+  content_en  String?
   isDelete    Boolean       @default(false)
   GalleryItem GalleryItem[]
 }
@@ -112,11 +114,14 @@ model GalleryItem {
 model News {
   id          Int      @id @default(autoincrement())
   type        NewsType
-  title       String
-  date        DateTime @default(now())
-  image_src   String
-  description String
-  content     String?
+  title          String
+  title_en       String?
+  date           DateTime @default(now())
+  image_src      String
+  description    String
+  description_en String?
+  content        String?
+  content_en     String?
   views       Int      @default(0)
   isShow      Boolean  @default(true)
 }
