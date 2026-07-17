@@ -5,3 +5,6 @@ node_modules/
 uploads/
 /generated/prisma
 *.txt
+
+# Docker env
+.env.docker
