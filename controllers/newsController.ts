@@ -8,7 +8,7 @@ import { translateToEnglish } from '../utils/translateService'
 
 export const createNews = asyncHandler(
   async (req: AuthRequest, res: Response) => {
-    const { title, description, content, type } = req.body
+    const { title, description, content, type, date } = req.body
 
     if (!title || !description) {
       res.status(400).json({ message: 'กรุณากรอกหัวข้อและรายละเอียดสั้น' })
@@ -34,6 +34,9 @@ export const createNews = asyncHandler(
     const description_en = await translateToEnglish(description)
     const content_en = await translateToEnglish(sanitizedContent)
 
+    const parsedDate = date ? new Date(date) : null
+    const dateData = parsedDate && !isNaN(parsedDate.getTime()) ? { date: parsedDate } : {}
+
     const news = await prisma.news.create({
       data: {
         type: type === 'PR' ? 'PR' : 'NEWS',
@@ -43,7 +46,7 @@ export const createNews = asyncHandler(
         description_en,
         content: sanitizedContent,
         content_en,
-        image_src: imagePath,
+        image_src: imagePath, ...dateData,
       },
     })
 
