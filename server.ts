@@ -76,13 +76,12 @@ const ALLOWED_ORIGINS: string[] = (
 app.use(
   cors({
     origin: (origin, callback) => {
-      // 🌟 ไม่มี Origin header (curl/server-to-server) — อนุญาตเฉพาะ non-production
+      // 🌟 ไม่มี Origin header (<img>/<script>/curl/server-to-server) — ไม่ใช่ CORS context
+      //    Browser ส่ง Origin เสมอเมื่อเป็น CORS request ดังนั้น no-origin = non-CORS client
+      //    Static files เช่น /uploads ต้องโหลดผ่าน <img> ได้ (img tag ไม่ส่ง Origin)
+      //    ส่วน mutation (POST/PUT/DELETE) ยังถูก CSRF middleware ป้องกันอยู่
       if (!origin) {
-        if (process.env.NODE_ENV !== 'production') {
-          callback(null, true)
-        } else {
-          callback(new Error('Not allowed by CORS'))
-        }
+        callback(null, true)
         return
       }
       if (ALLOWED_ORIGINS.includes(origin)) {
