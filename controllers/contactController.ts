@@ -69,19 +69,19 @@ export const createContact = asyncHandler(
       return
     }
 
-    const recentContact = await prisma.contact_requests.findFirst({
+    const recentCount = await prisma.contact_requests.count({
       where: {
         email: email.trim().toLowerCase(),
         created_at: {
-          gt: new Date(Date.now() - 2 * 60 * 1000) // 2 minutes ago
+          gt: new Date(Date.now() - 10 * 60 * 1000) // 10 minutes window
         }
       }
     })
 
-    if (recentContact) {
+    if (recentCount >= 5) {
       res.status(429).json({
         success: false,
-        message: 'คุณส่งข้อความติดต่อถี่เกินไป กรุณารอ 2 นาทีแล้วลองใหม่อีกครั้ง'
+        message: 'คุณส่งข้อความติดต่อเกิน 5 ครั้งใน 10 นาที กรุณารอแล้วลองใหม่อีกครั้ง'
       })
       return
     }
