@@ -7,7 +7,6 @@ import cron from 'node-cron' // 🌟 นำเข้า node-cron เข้า�
 import path from 'path'
 import { globalErrorHandler } from './middlewares/errorHandler'
 import helmet from 'helmet'
-import { setCharset } from './middlewares/setCharset'
 import prisma from './lib/prisma' // 🌟 นำเข้า prisma client เพื่อสั่งคำสั่งลบข้อมูลโดยตรง
 import { csrfProtection } from './middlewares/csrf'
 import { apiLimiter } from './middlewares/rateLimiter'
@@ -59,7 +58,9 @@ app.set('trust proxy', 1) // trust first proxy (Nginx, Cloudflare, etc.)
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(cookieParser())
-app.use(setCharset)
+// ⚠️ ห้าม set Content-Type ล่วงหน้าทุก response (เช่น application/json) — express.static
+//    จะไม่ทับค่าเดิม ทำให้ไฟล์ /uploads/*.png ส่งออกเป็น application/json + nosniff
+//    แล้วเบราว์เซอร์ไม่ยอมแสดงรูป (ไฟล์ 200 OK แต่รูปแตก) — res.json() ใส่ charset ให้เองอยู่แล้ว
 // 🌟 CSRF double-submit — ตรวจ cookie csrf_token คู่ header X-CSRF-Token ในทุก mutation
 // (public pre-auth endpoints ที่ไม่มี csrf cookie ถูกยกเว้นในไฟล์ middlewares/csrf.ts)
 app.use(csrfProtection)
@@ -128,8 +129,14 @@ app.use('/api/2fa', twoFactorRoutes)
 app.use('/api/supervisor-request', supervisorRequestRoutes)
 app.use('/api/backups', backupRoutes)
 
+// 🌟 ตอบ JSON แทน text/html (แก้ ZAP Low: Unexpected Content-Type was returned)
 app.get('/', (req: Request, res: Response) => {
-  res.send('Server is running with TypeScript!')
+  res.json({ message: 'Server is running with TypeScript!' })
+})
+
+// 🌟 JSON 404 fallback — route ที่ไม่มีจริงตอบ JSON ไม่ใช่ HTML จาก default handler
+app.use((req: Request, res: Response) => {
+  res.status(404).json({ message: 'Not found' })
 })
 
 app.use(globalErrorHandler)

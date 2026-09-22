@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "dev": "tsx watch server.ts",
+    "dev:docker": "nodemon --legacy-watch --ext ts --exec tsx server.ts",
     "clean": "rimraf dist",
     "build": "npm run clean && tsc",
     "start": "node dist/server.js",
@@ -49,6 +50,7 @@
     "@types/otplib": "^7.0.0",
     "@types/speakeasy": "^2.0.10",
     "dotenv": "^17.4.2",
+    "nodemon": "^3.1.14",
     "prisma": "^7.8.0",
     "rimraf": "^6.1.3",
     "tsx": "^4.22.3",
