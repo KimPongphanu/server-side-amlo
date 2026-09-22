@@ -6,6 +6,10 @@ import auth, { requireAdmin } from '../middlewares/auth'
 import { uploadLimiter } from '../middlewares/rateLimiter'
 import upload from '../middlewares/upload'
 import { validateMagicBytes } from '../utils/fileValidator'
+import {
+  convertUploadToWebp,
+  convertUploadsToWebp,
+} from '../utils/imageProcessing'
 
 const router: Router = express.Router()
 
@@ -55,6 +59,9 @@ router.post(
       return
     }
 
+    // 🌟 แปลงเป็น WebP (ตัด EXIF + จำกัดด้านยาว) ก่อนส่งข้อมูลไฟล์กลับ
+    await convertUploadToWebp(req.file)
+
     res.status(200).json({
       message: 'อัปโหลดไฟล์เดียวสำเร็จ!',
       fileInfo: req.file,
@@ -87,6 +94,9 @@ router.post(
       res.status(400).json({ success: false, message: error })
       return
     }
+
+    // 🌟 แปลงเป็น WebP (ตัด EXIF + จำกัดด้านยาว) ก่อนส่งข้อมูลไฟล์กลับ
+    await convertUploadsToWebp(files)
 
     res.status(200).json({
       message: 'อัปโหลดหลายไฟล์สำเร็จ!',

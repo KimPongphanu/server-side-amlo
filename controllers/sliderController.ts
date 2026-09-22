@@ -2,6 +2,7 @@ import asyncHandler from 'express-async-handler'
 import { NextFunction, Request, Response } from 'express'
 import fs from 'fs/promises'
 import { validateMagicBytes } from '../utils/fileValidator'
+import { convertUploadToWebp } from '../utils/imageProcessing'
 import path from 'path'
 import prisma from '../lib/prisma'
 import { AppError } from '../utils/AppError' // ถ้ามี custom error class
@@ -57,6 +58,9 @@ export const createSlide = asyncHandler(async (
 
     throw new AppError('ขนาดไฟล์ต้องไม่เกิน 5MB', 400)
   }
+
+  // 🌟 แปลงเป็น WebP (ตัด EXIF + จำกัดด้านยาว) ก่อนบันทึก
+  await convertUploadToWebp(file)
 
   // หา order ล่าสุด
   const maxOrder = await prisma.slider_images.aggregate({

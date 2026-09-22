@@ -8,6 +8,7 @@ import { AuthRequest } from '../middlewares/auth'
 import { logAudit } from '../utils/auditLogger'
 import { translateToEnglish } from '../utils/translateService'
 import { validateMagicBytes } from '../utils/fileValidator'
+import { convertUploadToWebp } from '../utils/imageProcessing'
 
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
@@ -65,6 +66,9 @@ export const createNews = asyncHandler(
       res.status(400).json({ message: fileError })
       return
     }
+
+    // 🌟 แปลงเป็น WebP (ตัด EXIF + จำกัดด้านยาว) ก่อนบันทึก
+    await convertUploadToWebp(req.file)
 
     // 🌟 Sanitize เนื้อหา HTML ก่อนนำไปใช้งาน
     const sanitizedContent = content ? DOMPurify.sanitize(content) : null
@@ -207,6 +211,9 @@ export const updateNews = asyncHandler(
         res.status(400).json({ success: false, message: fileError })
         return
       }
+
+      // 🌟 แปลงเป็น WebP (ตัด EXIF + จำกัดด้านยาว) ก่อนบันทึก
+      await convertUploadToWebp(req.file)
     }
 
     // 🌟 Sanitize เนื้อหาตอนอัปเดตข้อมูล

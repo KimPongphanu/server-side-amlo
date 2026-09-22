@@ -4,6 +4,7 @@ import DOMPurify from 'isomorphic-dompurify'
 import fs from 'fs/promises'
 import path from 'path'
 import { validateMagicBytes } from '../utils/fileValidator'
+import { convertUploadsToWebp } from '../utils/imageProcessing'
 import prisma from '../lib/prisma'
 import { AuthRequest } from '../middlewares/auth'
 import { logAudit } from '../utils/auditLogger'
@@ -86,6 +87,9 @@ export const createDepartment = asyncHandler(
       res.status(400).json({ message: invalidFileMessage })
       return
     }
+
+    // 🌟 แปลงเป็น WebP (ตัด EXIF + จำกัดด้านยาว) ก่อนบันทึก
+    await convertUploadsToWebp(allFiles)
 
     const youtubeRegex =
       /^https?:\/\/(?:youtu\.be\/|www\.youtube\.com\/(?:watch\?v=|shorts\/|embed\/))([\w-]{11})/
@@ -288,6 +292,9 @@ export const updateDepartment = asyncHandler(
       res.status(400).json({ message: invalidFileMessage })
       return
     }
+
+    // 🌟 แปลงเป็น WebP (ตัด EXIF + จำกัดด้านยาว) ก่อนบันทึก
+    await convertUploadsToWebp(allFiles)
 
     const rawUrls: string[] = Array.isArray(galleryUrls)
       ? galleryUrls

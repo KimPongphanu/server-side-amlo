@@ -37,6 +37,7 @@
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.11",
     "pg": "^8.21.0",
+    "sharp": "^0.35.4",
     "speakeasy": "^2.0.0"
   },
   "devDependencies": {

@@ -2,6 +2,7 @@ import asyncHandler from 'express-async-handler'
 import { NextFunction, Request, Response } from 'express'
 import fs from 'fs/promises'
 import { validateMagicBytes } from '../utils/fileValidator'
+import { convertUploadToWebp } from '../utils/imageProcessing'
 import path from 'path'
 import prisma from '../lib/prisma'
 import { AppError } from '../utils/AppError'
@@ -56,6 +57,9 @@ export const createPopup = asyncHandler(async (
     await fs.unlink(filePath).catch(() => {})
     throw new AppError('ไฟล์รูปภาพไม่ถูกต้องหรืออาจเป็นไฟล์อันตรายแฝงตัวมา', 400)
   }
+
+  // 🌟 แปลงเป็น WebP (ตัด EXIF + จำกัดด้านยาว) ก่อนบันทึก
+  await convertUploadToWebp(file)
 
   const sanitizedFilename = file.filename.replace(/[^a-zA-Z0-9.\-_]/g, '')
   const title = typeof req.body.title === 'string' ? req.body.title.trim() : ''
