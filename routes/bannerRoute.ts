@@ -30,10 +30,11 @@ router.get('/all', auth, requireAdmin, getAllBannersAdmin)
 // GET /api/banners — สาธารณะ (เฉพาะ isShow=true เสมอ)
 router.get('/', getAllBanners)
 
-// POST /api/banners — ต้องล็อกอิน + rate limit + audit
+// POST /api/banners — ต้องล็อกอิน (Admin/Supervisor) + rate limit + audit
 router.post(
   '/',
   auth,
+  requireAdmin,
   uploadLimiter,
   upload.single('image'),
   audit(
@@ -43,10 +44,11 @@ router.post(
   createBanner,
 )
 
-// PUT /api/banners/reorder — ต้องล็อกอิน + audit
+// PUT /api/banners/reorder — ต้องล็อกอิน (Admin/Supervisor) + audit
 router.put(
   '/reorder',
   auth,
+  requireAdmin,
   audit(
     'REORDER_BANNERS',
     (req) => `จัดลำดับ Banner ใหม่: ${JSON.stringify(req.body.orderedIds)}`,
@@ -54,10 +56,11 @@ router.put(
   reorderBanners,
 )
 
-// PUT /api/banners/:id — อัปเดต title และ link_url (ต้องล็อกอิน) + audit
+// PUT /api/banners/:id — อัปเดต title และ link_url (Admin/Supervisor) + audit
 router.put(
   '/:id',
   auth,
+  requireAdmin,
   audit(
     'UPDATE_BANNER',
     (req) =>
@@ -66,18 +69,20 @@ router.put(
   updateBanner,
 )
 
-// PATCH /api/banners/:id/toggle — toggle isShow (ต้องล็อกอิน) + audit
+// PATCH /api/banners/:id/toggle — toggle isShow (Admin/Supervisor) + audit
 router.patch(
   '/:id/toggle',
   auth,
+  requireAdmin,
   audit('TOGGLE_BANNER', (req) => `Toggle แสดง/ซ่อน Banner #${req.params.id}`),
   toggleBannerVisibility,
 )
 
-// DELETE /api/banners/:id — ต้องล็อกอิน + audit
+// DELETE /api/banners/:id — ต้องล็อกอิน (Admin/Supervisor) + audit
 router.delete(
   '/:id',
   auth,
+  requireAdmin,
   audit('DELETE_BANNER', (req) => `ลบ Banner #${req.params.id}`),
   deleteBanner,
 )

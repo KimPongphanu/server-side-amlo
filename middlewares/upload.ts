@@ -1,6 +1,7 @@
 // middlewares/upload.ts
 import { Request } from 'express'
 import fs from 'fs'
+import { randomUUID } from 'crypto'
 import multer, { StorageEngine } from 'multer'
 
 const uploadDir: string = 'uploads/'
@@ -19,13 +20,18 @@ const mimeToExtension: Record<string, string> = {
 const storage: StorageEngine = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9)
+    // 🌟 fieldname มาจาก client (multipart) — ตัดอักขระที่ใช้เดิน path ออกก่อนใช้ตั้งชื่อไฟล์
+    //    กันกรณีชื่อ field มี ../ แล้ว multer เอาไป path.join กับ destination จนหลุดโฟลเดอร์
+    const safeFieldName =
+      file.fieldname.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32) || 'file'
+
+    const uniqueSuffix = `${Date.now()}-${randomUUID().slice(0, 8)}`
 
     // Force the file extension based on the validated MIME type.
     // This prevents File Extension Spoofing (e.g., uploading shell.php as image/jpeg).
     const safeExtension = mimeToExtension[file.mimetype] || '.bin'
 
-    cb(null, `${file.fieldname}-${uniqueSuffix}${safeExtension}`)
+    cb(null, `${safeFieldName}-${uniqueSuffix}${safeExtension}`)
   },
 })
 

@@ -15,7 +15,7 @@ const router: Router = express.Router()
  * @ROUTE   POST /api/news
  * @DESC    สร้างข่าวสารหรือกิจกรรมใหม่ (Admin Only)
  */
-router.post('/', auth, uploadLimiter, upload.single('image'), createNews)
+router.post('/', auth, requireAdmin, uploadLimiter, upload.single('image'), createNews)
 
 /**
  * @ROUTE   GET /api/news/all
@@ -33,6 +33,6 @@ router.get('/', getNews)
  * @ROUTE   PUT /api/news/:id
  * @DESC    อัปเดตแก้ไขข้อมูลข่าวหรือ PR ตาม ID ข้อมูล (Admin Only)
  */
-router.put('/:id', auth, upload.single('image'), updateNews)
+router.put('/:id', auth, requireAdmin, uploadLimiter, upload.single('image'), updateNews)
 
 export default router

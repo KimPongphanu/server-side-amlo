@@ -17,23 +17,41 @@ interface GalleryResponseItem {
   departmentId: number
 }
 
+type UploadedFiles = { [fieldname: string]: Express.Multer.File[] } | undefined
+
+/** ลบไฟล์ที่ multer เขียนลงดิสก์แล้วทั้งหมด (ใช้เมื่อ request ถูกปฏิเสธหรือบันทึก DB ไม่สำเร็จ) */
+const cleanupUploads = async (files: UploadedFiles): Promise<void> => {
+  if (!files) return
+  for (const list of Object.values(files)) {
+    for (const file of list) {
+      await fs.unlink(path.join(process.cwd(), file.path)).catch(() => {})
+    }
+  }
+}
+
+const removeUploadedFile = async (url?: string | null): Promise<void> => {
+  if (!url || !url.startsWith('/uploads/')) return
+  await fs.unlink(path.join(process.cwd(), url)).catch(() => {})
+}
+
 export const createDepartment = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { ipAddress, userAgent } = getClientMetadata(req)
     const { title, content, galleryUrls } = req.body
-    const files = req.files as
-      | { [fieldname: string]: Express.Multer.File[] }
-      | undefined
+    const files = req.files as UploadedFiles
 
     if (!title) {
+      await cleanupUploads(files)
       res.status(400).json({ message: 'กรุณากรอกหัวข้อภาควิชา' })
       return
     }
     if (title.length > 150) {
+      await cleanupUploads(files)
       res.status(400).json({ message: 'หัวข้อยาวเกินกำหนด' })
       return
     }
     if (!files || !files['cover_image']) {
+      await cleanupUploads(files)
       res.status(400).json({ message: 'กรุณาอัปโหลดรูปภาพปก (cover_image)' })
       return
     }
@@ -48,21 +66,25 @@ export const createDepartment = asyncHandler(
     ]
     const allFiles = [...files['cover_image'], ...(files['gallery'] || [])]
 
+    let invalidFileMessage: string | null = null
     for (const file of allFiles) {
       if (!allowedMimeTypes.includes(file.mimetype)) {
-        res.status(400).json({ message: `ไฟล์ ${file.originalname} ไม่รองรับ` })
-        const filePath = path.join(process.cwd(), file.path)
-        await fs.unlink(filePath).catch(() => {})
-        return
+        invalidFileMessage = `ไฟล์ ${file.originalname} ไม่รองรับ`
+        break
       }
-      
+
       const filePath = path.join(process.cwd(), file.path)
       const isValid = await validateMagicBytes(filePath, file.mimetype)
       if (!isValid) {
-        res.status(400).json({ message: `ไฟล์ ${file.originalname} ไม่ถูกต้องหรือเป็นไฟล์อันตราย` })
-        await fs.unlink(filePath).catch(() => {})
-        return
+        invalidFileMessage = `ไฟล์ ${file.originalname} ไม่ถูกต้องหรือเป็นไฟล์อันตราย`
+        break
       }
+    }
+
+    if (invalidFileMessage) {
+      await cleanupUploads(files)
+      res.status(400).json({ message: invalidFileMessage })
+      return
     }
 
     const youtubeRegex =
@@ -75,6 +97,7 @@ export const createDepartment = asyncHandler(
 
     for (const url of rawUrls) {
       if (!youtubeRegex.test(url)) {
+        await cleanupUploads(files)
         res.status(400).json({ message: `YouTube URL ไม่ถูกต้อง: ${url}` })
         return
       }
@@ -93,42 +116,47 @@ export const createDepartment = asyncHandler(
     ]
 
     // 🌟 แปลภาษาอังกฤษ
-    const title_en = await translateToEnglish(title)
-    const content_en = await translateToEnglish(sanitizedContent || '')
+    try {
+      const title_en = await translateToEnglish(title)
+      const content_en = await translateToEnglish(sanitizedContent || '')
 
-    const department = await prisma.department.create({
-      data: {
-        title,
-        title_en,
-        content: sanitizedContent,
-        content_en,
-        cover_image: coverImagePath,
-        GalleryItem: { create: galleryData },
-      },
-      include: { GalleryItem: true },
-    })
+      const department = await prisma.department.create({
+        data: {
+          title,
+          title_en,
+          content: sanitizedContent,
+          content_en,
+          cover_image: coverImagePath,
+          GalleryItem: { create: galleryData },
+        },
+        include: { GalleryItem: true },
+      })
 
-    const formattedDepartment = {
-      ...department,
-      gallery: department.GalleryItem.map((g: GalleryResponseItem) => ({
-        ...g,
-        type: g.type.toLowerCase(),
-      })),
+      const formattedDepartment = {
+        ...department,
+        gallery: department.GalleryItem.map((g: GalleryResponseItem) => ({
+          ...g,
+          type: g.type.toLowerCase(),
+        })),
+      }
+
+      const adminUser = await prisma.user.findUnique({
+        where: { uuid: req.user?.uuid },
+      })
+      await logAudit(
+        req,
+        'CREATE_DEPARTMENT_SUCCESS',
+        `Admin created a new department: "${title.trim()}" (Department ID: ${department.id}, Total media items: ${galleryData.length})`,
+        adminUser?.id,
+      )
+
+      res
+        .status(201)
+        .json({ message: 'สร้างภาควิชาสำเร็จ', data: formattedDepartment })
+    } catch (error) {
+      await cleanupUploads(files)
+      throw error
     }
-
-    const adminUser = await prisma.user.findUnique({
-      where: { uuid: req.user?.uuid },
-    })
-    await logAudit(
-      req,
-      'CREATE_DEPARTMENT_SUCCESS',
-      `Admin created a new department: "${title.trim()}" (Department ID: ${department.id}, Total media items: ${galleryData.length})`,
-      adminUser?.id,
-    )
-
-    res
-      .status(201)
-      .json({ message: 'สร้างภาควิชาสำเร็จ', data: formattedDepartment })
   },
 )
 
@@ -192,6 +220,7 @@ export const updateDepartment = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const id = parseInt(String(req.params.id))
     if (isNaN(id)) {
+      await cleanupUploads(req.files as UploadedFiles)
       res.status(400).json({ message: 'ID ไม่ถูกต้อง' })
       return
     }
@@ -203,21 +232,25 @@ export const updateDepartment = asyncHandler(
       existingGalleryUrls,
       isGalleryUpdated,
     } = req.body
-    const files = req.files as
-      | { [fieldname: string]: Express.Multer.File[] }
-      | undefined
+    const files = req.files as UploadedFiles
 
     if (!title) {
+      await cleanupUploads(files)
       res.status(400).json({ message: 'กรุณากรอกหัวข้อภาควิชา' })
       return
     }
     if (title.length > 150) {
+      await cleanupUploads(files)
       res.status(400).json({ message: 'หัวข้อยาวเกินกำหนด' })
       return
     }
 
-    const existingDept = await prisma.department.findUnique({ where: { id } })
+    const existingDept = await prisma.department.findUnique({
+      where: { id },
+      include: { GalleryItem: true },
+    })
     if (!existingDept) {
+      await cleanupUploads(files)
       res.status(404).json({ message: 'ไม่พบหน่วยงานที่ต้องการแก้ไข' })
       return
     }
@@ -234,22 +267,38 @@ export const updateDepartment = asyncHandler(
       ...(files?.['cover_image'] || []),
       ...(files?.['gallery'] || []),
     ]
+
+    let invalidFileMessage: string | null = null
     for (const file of allFiles) {
       if (!allowedMimeTypes.includes(file.mimetype)) {
-        res.status(400).json({ message: `ไฟล์ ${file.originalname} ไม่รองรับ` })
-        const filePath = path.join(process.cwd(), file.path)
-        await fs.unlink(filePath).catch(() => {})
-        return
+        invalidFileMessage = `ไฟล์ ${file.originalname} ไม่รองรับ`
+        break
       }
 
       const filePath = path.join(process.cwd(), file.path)
       const isValid = await validateMagicBytes(filePath, file.mimetype)
       if (!isValid) {
-        res.status(400).json({ message: `ไฟล์ ${file.originalname} ไม่ถูกต้องหรือเป็นไฟล์อันตราย` })
-        await fs.unlink(filePath).catch(() => {})
-        return
+        invalidFileMessage = `ไฟล์ ${file.originalname} ไม่ถูกต้องหรือเป็นไฟล์อันตราย`
+        break
       }
     }
+
+    if (invalidFileMessage) {
+      await cleanupUploads(files)
+      res.status(400).json({ message: invalidFileMessage })
+      return
+    }
+
+    const rawUrls: string[] = Array.isArray(galleryUrls)
+      ? galleryUrls
+      : galleryUrls
+        ? [galleryUrls]
+        : []
+    const rawExistingUrls: string[] = Array.isArray(existingGalleryUrls)
+      ? existingGalleryUrls
+      : existingGalleryUrls
+        ? [existingGalleryUrls]
+        : []
 
     let coverImagePath = existingDept.cover_image
     if (files?.['cover_image']) {
@@ -260,19 +309,10 @@ export const updateDepartment = asyncHandler(
     if (isGalleryUpdated === 'true') {
       const youtubeRegex =
         /^https?:\/\/(?:youtu\.be\/|www\.youtube\.com\/(?:watch\?v=|shorts\/|embed\/))([\w-]{11})/
-      const rawUrls: string[] = Array.isArray(galleryUrls)
-        ? galleryUrls
-        : galleryUrls
-          ? [galleryUrls]
-          : []
-      const rawExistingUrls: string[] = Array.isArray(existingGalleryUrls)
-        ? existingGalleryUrls
-        : existingGalleryUrls
-          ? [existingGalleryUrls]
-          : []
 
       for (const url of rawUrls) {
         if (!youtubeRegex.test(url)) {
+          await cleanupUploads(files)
           res.status(400).json({ message: `YouTube URL ไม่ถูกต้อง: ${url}` })
           return
         }
@@ -294,42 +334,71 @@ export const updateDepartment = asyncHandler(
     }
 
     // 🌟 แปลภาษาอังกฤษ
-    const title_en = await translateToEnglish(title)
-    const content_en = await translateToEnglish(sanitizedContent || '')
+    try {
+      const title_en = await translateToEnglish(title)
+      const content_en = await translateToEnglish(sanitizedContent || '')
 
-    const updatedDept = await prisma.department.update({
-      where: { id },
-      data: {
-        title,
-        title_en,
-        content: sanitizedContent,
-        content_en,
-        cover_image: coverImagePath,
-        ...(galleryUpdateData && { GalleryItem: galleryUpdateData }),
-      },
-      include: { GalleryItem: true },
-    })
+      const updatedDept = await prisma.department.update({
+        where: { id },
+        data: {
+          title,
+          title_en,
+          content: sanitizedContent,
+          content_en,
+          cover_image: coverImagePath,
+          ...(galleryUpdateData && { GalleryItem: galleryUpdateData }),
+        },
+        include: { GalleryItem: true },
+      })
 
-    const formattedDepartment = {
-      ...updatedDept,
-      gallery: updatedDept.GalleryItem.map((g: GalleryResponseItem) => ({
-        ...g,
-        type: g.type.toLowerCase(),
-      })),
+      // 🌟 ลบไฟล์เก่าที่ไม่ถูกอ้างอิงแล้ว (cover ที่ถูกเปลี่ยน + รูปแกลเลอรีที่ถูกแทนที่)
+      if (
+        files?.['cover_image'] &&
+        existingDept.cover_image !== coverImagePath
+      ) {
+        await removeUploadedFile(existingDept.cover_image)
+      }
+
+      if (isGalleryUpdated === 'true') {
+        const stillUsed = new Set<string>([
+          ...rawExistingUrls,
+          ...(files?.['gallery'] || []).map(
+            (file) => `/uploads/${file.filename}`,
+          ),
+          ...rawUrls,
+        ])
+
+        for (const item of existingDept.GalleryItem) {
+          if (!stillUsed.has(item.url)) {
+            await removeUploadedFile(item.url)
+          }
+        }
+      }
+
+      const formattedDepartment = {
+        ...updatedDept,
+        gallery: updatedDept.GalleryItem.map((g: GalleryResponseItem) => ({
+          ...g,
+          type: g.type.toLowerCase(),
+        })),
+      }
+
+      const adminUser = await prisma.user.findUnique({
+        where: { uuid: req.user?.uuid },
+      })
+      await logAudit(
+        req,
+        'UPDATE_DEPARTMENT_SUCCESS',
+        `Admin updated department: "${existingDept.title}" -> "${title.trim()}" (Department ID: ${id})`,
+        adminUser?.id,
+      )
+
+      res
+        .status(200)
+        .json({ message: 'แก้ไขหน่วยงานสำเร็จ', data: formattedDepartment })
+    } catch (error) {
+      await cleanupUploads(files)
+      throw error
     }
-
-    const adminUser = await prisma.user.findUnique({
-      where: { uuid: req.user?.uuid },
-    })
-    await logAudit(
-      req,
-      'UPDATE_DEPARTMENT_SUCCESS',
-      `Admin updated department: "${existingDept.title}" -> "${title.trim()}" (Department ID: ${id})`,
-      adminUser?.id,
-    )
-
-    res
-      .status(200)
-      .json({ message: 'แก้ไขหน่วยงานสำเร็จ', data: formattedDepartment })
   },
 )

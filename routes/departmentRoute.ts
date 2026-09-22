@@ -5,7 +5,7 @@ import {
   getDepartments,
   updateDepartment,
 } from '../controllers/departmentController'
-import auth from '../middlewares/auth'
+import auth, { requireAdmin } from '../middlewares/auth'
 import { uploadLimiter } from '../middlewares/rateLimiter'
 import upload from '../middlewares/upload'
 
@@ -14,6 +14,7 @@ const router = Router()
 router.post(
   '/',
   auth,
+  requireAdmin,
   uploadLimiter,
   upload.fields([
     { name: 'cover_image', maxCount: 1 },
@@ -24,11 +25,12 @@ router.post(
 
 router.get('/', getDepartments)
 
-router.delete('/:id', auth, deleteDepartment)
+router.delete('/:id', auth, requireAdmin, deleteDepartment)
 
 router.put(
   '/:id',
   auth,
+  requireAdmin,
   uploadLimiter,
   upload.fields([
     { name: 'cover_image', maxCount: 1 },
