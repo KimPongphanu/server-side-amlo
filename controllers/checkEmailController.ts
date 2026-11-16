@@ -17,7 +17,11 @@ export const checkEmail = asyncHandler(async (req: Request, res: Response) => {
 
   const user = await prisma.user.findUnique({
     where: { email: email.toLowerCase().trim() },
-    select: { role: true },
+    select: {
+      role: true,
+      twoFactorEnabled: true,
+      twoFactorMethod: true,
+    },
   })
 
   if (!user) {
@@ -28,8 +32,13 @@ export const checkEmail = asyncHandler(async (req: Request, res: Response) => {
     return
   }
 
+  // 🌟 2FA (Authenticator) เป็นวิธีเดียวที่ใช้ได้แล้ว — ไม่มี email OTP แล้ว
+  const requires2FA =
+    user.twoFactorEnabled && user.twoFactorMethod === 'AUTHENTICATOR'
+
   res.status(200).json({
     found: true,
-    role: user.role, // 'ADMIN' | 'SUPERVISOR' | 'USER'
+    role: user.role, // 'ADMIN' | 'SUPERVISOR'
+    requires2FA,
   })
 })

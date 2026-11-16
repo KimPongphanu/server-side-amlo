@@ -119,6 +119,7 @@ export const createAdmin = asyncHandler(
         twoFactorMethod: 'NONE',
         twoFactorEnabled: false,
         forcePasswordReset: true,
+        tempPasswordIssuedAt: new Date(),
       },
     })
 

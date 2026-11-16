@@ -49,6 +49,15 @@ const lookupGeoRegion = async (ip: string): Promise<string | null> => {
   return null
 }
 
+const enrichRegion = async (logId: string, ipAddress: string) => {
+  const region = await lookupGeoRegion(ipAddress)
+  if (!region) return
+  await prisma.auditLog.update({
+    where: { id: logId },
+    data: { region },
+  })
+}
+
 export const logAudit = async (
   req: Request,
   action: string,
@@ -56,11 +65,23 @@ export const logAudit = async (
   userId?: number | null,
 ) => {
   const { ipAddress, serverIp, userAgent } = getClientMetadata(req)
-  const region = await lookupGeoRegion(ipAddress)
   try {
-    await prisma.auditLog.create({
-      data: { userId, action, ipAddress, serverIp, region, userAgent, details },
+    const log = await prisma.auditLog.create({
+      data: {
+        userId,
+        action,
+        ipAddress,
+        serverIp,
+        region: null,
+        userAgent,
+        details,
+      },
+      select: { id: true },
     })
+    // 🌟 GeoIP เป็นข้อมูลเสริม — เติม region หลังบันทึก audit แล้ว ไม่ block response
+    void enrichRegion(log.id, ipAddress).catch((err) =>
+      console.error('Audit Log region update failed:', err),
+    )
   } catch (err) {
     console.error(`Audit Log Failed [${action}]:`, err)
   }

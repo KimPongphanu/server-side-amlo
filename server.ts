@@ -12,6 +12,7 @@ import { csrfProtection } from './middlewares/csrf'
 import { apiLimiter } from './middlewares/rateLimiter'
 import { cleanupExpiredSessions } from './middlewares/session'
 import adminRoutes from './routes/adminRoute'
+import analyticsRoutes from './routes/analyticsRoute'
 import auditRoutes from './routes/auditRoute'
 import authRoutes from './routes/authRoute'
 import backupRoutes from './routes/backupRoute'
@@ -23,6 +24,7 @@ import fileRoutes from './routes/fileRoute'
 import footerSettingRoutes from './routes/footerSettingRoute'
 import newsRoutes from './routes/newsRoute'
 import sliderRoutes from './routes/sliderRoute'
+import sitemapRoutes from './routes/sitemapRoute'
 import splashPopupRoutes from './routes/splashPopupRoute'
 import supervisorRequestRoutes from './routes/supervisorRequestRoute'
 import twoFactorRoutes from './routes/twoFactorRoute'
@@ -30,6 +32,11 @@ import uploadRoutes from './routes/uploadRoute'
 
 const app: Express = express()
 const port: number = 8080
+
+// 🌟 งานเบื้องหลัง (audit/อีเมล) ต้องไม่ทำให้ process ล่ม — log ไว้แทน crash
+process.on('unhandledRejection', (reason) => {
+  console.error('[UnhandledRejection]', reason)
+})
 
 // 🌟 Security headers (helmet) — CSP จัดการที่ Nginx/frontend layer
 // CORP เปิด cross-origin เพื่อให้ /uploads ใช้งานข้าม origin ได้
@@ -113,6 +120,7 @@ app.use('/api', apiLimiter)
 
 // ── 3. กลุ่ม Route บริการต่างๆ ──
 app.use('/api/admin', adminRoutes)
+app.use('/api/analytics', analyticsRoutes)
 app.use('/api/auth', authRoutes)
 app.use('/api/upload', uploadRoutes)
 app.use('/api/news', newsRoutes)
@@ -128,6 +136,14 @@ app.use('/api/splash-popups', splashPopupRoutes)
 app.use('/api/2fa', twoFactorRoutes)
 app.use('/api/supervisor-request', supervisorRequestRoutes)
 app.use('/api/backups', backupRoutes)
+
+// 🌟 XML sitemap สำหรับ search engine (สร้างจาก DB: ข่าว, PR, หน่วยงาน)
+app.use('/sitemap.xml', sitemapRoutes)
+
+// 🌟 Health check — Nginx proxy /health มาที่นี่ (ใช้โดย Docker healthcheck / monitoring)
+app.get('/health', (req: Request, res: Response) => {
+  res.json({ status: 'ok', uptime: Math.floor(process.uptime()) })
+})
 
 // 🌟 ตอบ JSON แทน text/html (แก้ ZAP Low: Unexpected Content-Type was returned)
 app.get('/', (req: Request, res: Response) => {

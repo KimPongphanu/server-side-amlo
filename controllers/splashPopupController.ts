@@ -89,10 +89,18 @@ export const updatePopup = asyncHandler(async (
 
   const existing = await prisma.splash_popups.findUnique({ where: { id } })
   if (!existing) {
+    if (req.file) {
+      await fs.unlink(path.join(process.cwd(), req.file.path)).catch(() => {})
+    }
     throw new AppError('ไม่พบ Popup', 404)
   }
 
-  const data: { title?: string; isActive?: boolean; bg_color?: string } = {}
+  const data: {
+    title?: string
+    isActive?: boolean
+    bg_color?: string
+    image_url?: string
+  } = {}
 
   if (typeof req.body.title === 'string') {
     data.title = req.body.title.trim()
@@ -109,14 +117,69 @@ export const updatePopup = asyncHandler(async (
       })
     }
     data.isActive = req.body.isActive
+  } else if (
+    req.body.isActive === 'true' ||
+    req.body.isActive === 'false'
+  ) {
+    // multipart/form-data ส่ง boolean มาเป็น string
+    const isActive = req.body.isActive === 'true'
+    if (isActive) {
+      await prisma.splash_popups.updateMany({
+        where: { isActive: true },
+        data: { isActive: false },
+      })
+    }
+    data.isActive = isActive
   }
 
-  const updated = await prisma.splash_popups.update({
-    where: { id },
-    data,
-  })
+  let newImageUrl: string | undefined
 
-  res.status(200).json({ success: true, data: updated })
+  if (req.file) {
+    const file = req.file
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp']
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      await fs.unlink(path.join(process.cwd(), file.path)).catch(() => {})
+      throw new AppError('รองรับเฉพาะไฟล์รูปภาพ JPG, PNG, WEBP เท่านั้น', 400)
+    }
+
+    const filePath = path.join(process.cwd(), file.path)
+    const isValidFile = await validateMagicBytes(filePath, file.mimetype)
+    if (!isValidFile) {
+      await fs.unlink(filePath).catch(() => {})
+      throw new AppError('ไฟล์รูปภาพไม่ถูกต้องหรืออาจเป็นไฟล์อันตรายแฝงตัวมา', 400)
+    }
+
+    // 🌟 แปลงเป็น WebP (ตัด EXIF + จำกัดด้านยาว) ก่อนบันทึก
+    await convertUploadToWebp(file)
+
+    const sanitizedFilename = file.filename.replace(/[^a-zA-Z0-9.\-_]/g, '')
+    newImageUrl = `/uploads/${sanitizedFilename}`
+    data.image_url = newImageUrl
+  }
+
+  try {
+    const updated = await prisma.splash_popups.update({
+      where: { id },
+      data,
+    })
+
+    if (
+      newImageUrl &&
+      existing.image_url.startsWith('/uploads/') &&
+      existing.image_url !== newImageUrl
+    ) {
+      await fs
+        .unlink(path.join(process.cwd(), existing.image_url))
+        .catch(() => {})
+    }
+
+    res.status(200).json({ success: true, data: updated })
+  } catch (error) {
+    if (newImageUrl) {
+      await fs.unlink(path.join(process.cwd(), newImageUrl)).catch(() => {})
+    }
+    throw error
+  }
 })
 
 // DELETE /api/splash-popups/:id — ลบ popup

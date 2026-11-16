@@ -19,8 +19,6 @@ const EXEMPT_PATHS = new Set<string>([
   '/api/auth/reset-password',
   '/api/contact',
   '/api/comments',
-  '/api/2fa/otp/request',
-  '/api/2fa/otp/verify',
   '/api/2fa/verify-login',
   '/api/2fa/recovery/use',
 ])

@@ -10,9 +10,12 @@ const keyGenerator = (req: Request): string => {
 }
 
 // ── Login Limiter ────────────────────────────────────────────
+// ── Login Limiter (ปรับเพดานได้ผ่าน env สำหรับ E2E) ───────────
+const LOGIN_MAX = Number(process.env.LOGIN_RATE_LIMIT_MAX) || 10
+
 export const loginLimiter = rateLimit({
   windowMs: 30 * 60 * 1000,
-  max: 10,
+  max: LOGIN_MAX,
   keyGenerator,
   skipSuccessfulRequests: true,
   validate: false,
@@ -58,9 +61,13 @@ export const uploadLimiter = rateLimit({
 })
 
 // ── Public API Limiter (general) ─────────────────────────────
+// 🌟 ปรับเพดานได้ผ่าน env — ใช้เมื่อรัน E2E suite (ยิง request ถี่มาก)
+//    ห้ามตั้งค่าสูงใน production; ค่าเริ่มต้นยังเป็น 400
+const API_MAX = Number(process.env.API_RATE_LIMIT_MAX) || 400
+
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 400,
+  max: API_MAX,
   keyGenerator,
   validate: false,
   message: { message: 'ระบบตรวจพบการเรียกใช้งานที่ถี่เกินไป' },
@@ -82,24 +89,10 @@ export const commentRateLimiter = rateLimit({
   legacyHeaders: false,
 })
 
-// ── OTP Send Limiter (ป้องกัน email bombing / SMTP quota exhaustion) ──
-export const otpLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 5,
-  keyGenerator,
-  validate: false,
-  message: {
-    success: false,
-    message: 'คุณขอรหัส OTP บ่อยเกินไป กรุณารอ 1 ชั่วโมงแล้วลองใหม่อีกครั้ง',
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-})
-
-// ── OTP Verify Limiter (ป้องกัน brute force OTP / recovery key) ──
+// ── OTP Verify Limiter (ป้องกัน brute force OTP / recovery key / TOTP) ──
 export const verifyLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: Number(process.env.VERIFY_RATE_LIMIT_MAX) || 10,
   keyGenerator,
   validate: false,
   message: {

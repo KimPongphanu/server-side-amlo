@@ -145,24 +145,3 @@ export const sendUserActionAlert = async (
   }
 }
 
-export const sendOTPEmail = async (
-  email: string,
-  otp: string,
-  expiresInMinutes: number,
-): Promise<void> => {
-  const html = `
-    <h2>Your OTP Verification Code</h2>
-    <p>You requested a one-time password (OTP) for AMLO system access.</p>
-    <h1 style="font-size: 32px; letter-spacing: 5px;">${otp}</h1>
-    <p>This code will expire in ${expiresInMinutes} minutes.</p>
-    <p>If you did not request this code, please ignore this email.</p>
-    <hr>
-    <p><small>Anti-Money Laundering Office (AMLO)</small></p>
-  `
-
-  await sendEmail({
-    to: email,
-    subject: 'Your AMLO OTP Verification Code',
-    html,
-  })
-}

@@ -23,6 +23,7 @@ model User {
   status             String               @default("Active")
   forcePasswordReset Boolean              @default(false)
   passwordChangedAt  DateTime?
+  tempPasswordIssuedAt DateTime?
   auditLogs          AuditLog[]
   failedAttempts     FailedLoginAttempt[]
   passwordHistory    PasswordHistory[]
@@ -148,15 +149,6 @@ model contact_requests {
   updated_at        DateTime @updatedAt
 }
 
-model email_otps {
-  id        String   @id @default(uuid())
-  email     String
-  otp       String
-  used      Boolean  @default(false)
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-}
-
 model slider_images {
   id        Int      @id @default(autoincrement())
   image_url String
@@ -218,7 +210,6 @@ enum Role {
 enum TwoFactorMethod {
   NONE
   AUTHENTICATOR
-  EMAIL_OTP
 }
 
 enum GalleryType {

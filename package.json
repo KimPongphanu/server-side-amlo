@@ -3,12 +3,16 @@
   "version": "1.0.0",
   "description": "",
   "main": "server.js",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "tsx watch server.ts",
     "dev:docker": "nodemon --legacy-watch --ext ts --exec tsx server.ts",
     "clean": "rimraf dist",
     "build": "npm run clean && tsc",
     "start": "node dist/server.js",
+    "test": "tsx --test tests/*.test.ts",
     "migrate:dev": "npx prisma migrate dev",
     "migrate:deploy": "npx prisma migrate deploy",
     "prisma:generate": "npx prisma generate",
@@ -45,7 +49,7 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.1.0",
-    "@types/node": "^25.9.3",
+    "@types/node": "^24.12.2",
     "@types/node-cron": "^3.0.11",
     "@types/nodemailer": "^8.0.1",
     "@types/otplib": "^7.0.0",

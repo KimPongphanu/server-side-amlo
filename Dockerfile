@@ -3,7 +3,7 @@
 # ============================================================
 
 # ---- Stage 1: Build ----
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 # Install build dependencies for Prisma
 RUN apk add --no-cache openssl
@@ -24,7 +24,7 @@ RUN npx prisma generate --config prisma.config.ts 2>/dev/null || npx prisma gene
 RUN npm run build
 
 # ---- Stage 2: Runner ----
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 
 # Install PostgreSQL client (pg_dump, psql) for backup feature
 RUN apk add --no-cache postgresql-client openssl

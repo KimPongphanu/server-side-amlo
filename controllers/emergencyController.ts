@@ -112,7 +112,11 @@ export const emergencyAction = asyncHandler(
       case 'FORCE_RESET':
         await prisma.user.update({
           where: { id: target.id },
-          data: { forcePasswordReset: true },
+          data: {
+            forcePasswordReset: true,
+            tempPasswordIssuedAt: new Date(),
+            passwordChangedAt: null,
+          },
         })
         actionDescription = `Supervisor ${target.email} was force reset via emergency recovery key`
         break
