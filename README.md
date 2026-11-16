@@ -14,10 +14,13 @@ This is the backend REST API for the AMLO system, built with Node.js, Express, a
 ## 📦 Core Features
 
 - **Robust Authentication**: Secure login with password hashing (bcrypt), brute-force protection, and Two-Factor Authentication (OTP via Email & Google Authenticator TOTP).
-- **Role-Based Access Control**: Differentiates between standard `USER`, `ADMIN`, and `SUPERVISOR` roles.
+- **Admin 2FA**: Admins use the same TOTP + recovery-key flow as Supervisors.
+- **Role-Based Access Control**: Differentiates between `ADMIN` and `SUPERVISOR` roles.
 - **Supervisor Approval Workflow**: Critical actions (like deleting a user or resetting passwords) require approval requests between Supervisors.
 - **Audit Logging**: Comprehensive tracking of user logins, admin actions, and system modifications.
 - **Media Uploads**: Built-in file handling using `multer` for image uploads.
+- **Dynamic XML Sitemap**: `GET /sitemap.xml` is generated from published news, PR, and departments.
+- **Popup Image Replacement**: `PUT /api/splash-popups/:id` accepts multipart image uploads.
 
 ## 🛠️ Getting Started
 
@@ -30,7 +33,7 @@ This is the backend REST API for the AMLO system, built with Node.js, Express, a
 
 1. Clone the repository and navigate to the backend directory:
    ```bash
-   cd AMLO_website/backend-amlo
+   cd AMLO_website/backend
    ```
 
 2. Install dependencies:
@@ -60,6 +63,10 @@ This is the backend REST API for the AMLO system, built with Node.js, Express, a
    SMTP_PORT=587
    SMTP_USER="your-email"
    SMTP_PASS="your-password"
+   
+   # Optional: canonical public URL for /sitemap.xml
+   # If empty, the backend derives it from the request Host + X-Forwarded-Proto.
+   SITE_URL="https://www.amlo.go.th"
    ```
 
 ### Database Setup
@@ -69,11 +76,11 @@ This is the backend REST API for the AMLO system, built with Node.js, Express, a
    docker-compose up -d
    ```
 
-2. Sync the Prisma schema with the database:
+2. Apply the Prisma migrations:
    ```bash
-   npx prisma db push
+   npx prisma migrate deploy
    ```
-   *(Note: You can also use `npx prisma migrate dev` for structured migrations).*
+   *(For local schema changes, use `npx prisma migrate dev` instead.)*
 
 3. Seed the initial data (Admins, Supervisors, default settings):
    ```bash

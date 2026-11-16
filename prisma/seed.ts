@@ -111,6 +111,7 @@ async function main() {
         twoFactorMethod: 'NONE' as const,
         twoFactorEnabled: false,
         forcePasswordReset: true,
+        tempPasswordIssuedAt: new Date(),
       },
     })
 

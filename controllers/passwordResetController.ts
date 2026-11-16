@@ -11,15 +11,22 @@ import { getClientMetadata } from '../utils/ipSelector'
 
 interface ResetPasswordBody {
   email: string
-  otp?: string
   totp?: string
   resetToken?: string
   newPassword: string
 }
 
+/**
+ * @ROUTE   POST /api/auth/reset-password
+ * @DESC    Reset a forgotten password using EITHER a 2FA code (TOTP) or a
+ *          recovery-key reset token. Email OTP is no longer supported.
+ *
+ * 🚫 บัญชีที่ยังไม่ enroll 2FA (ยังไม่มี secret) จะไม่มีทางรีเซ็ตด้วยตนเอง
+ *    ต้องให้ Supervisor สั่ง force reset เท่านั้น — เป็นการแลกที่ตั้งใจ
+ */
 export const resetPassword = asyncHandler(
   async (req: Request, res: Response) => {
-    const { email, otp, totp, resetToken, newPassword } =
+    const { email, totp, resetToken, newPassword } =
       req.body as ResetPasswordBody
     const { ipAddress, userAgent } = getClientMetadata(req)
 
@@ -28,12 +35,8 @@ export const resetPassword = asyncHandler(
       return
     }
 
-    if (
-      (!otp || otp === '') &&
-      (!totp || totp === '') &&
-      (!resetToken || resetToken === '')
-    ) {
-      res.status(400).json({ message: 'OTP, TOTP, or reset token is required' })
+    if ((!totp || totp === '') && (!resetToken || resetToken === '')) {
+      res.status(400).json({ message: 'TOTP หรือ reset token จำเป็นต้องมี' })
       return
     }
 
@@ -78,32 +81,6 @@ export const resetPassword = asyncHandler(
       }
     }
 
-    // Verify OTP if provided (save id for later, don't mark used yet)
-    let verifiedOtpId: string | null = null
-    if (otp) {
-      const emailOtps = await prisma.email_otps.findMany({
-        where: {
-          email: email.toLowerCase(),
-          used: false,
-          expiresAt: { gt: new Date() },
-        },
-      })
-
-      let isOtpValid = false
-      for (const record of emailOtps) {
-        if (await bcrypt.compare(otp, record.otp)) {
-          verifiedOtpId = record.id
-          isOtpValid = true
-          break
-        }
-      }
-
-      if (!isOtpValid) {
-        res.status(400).json({ message: 'Invalid or expired OTP' })
-        return
-      }
-    }
-
     // Verify reset token from recovery key flow
     if (resetToken) {
       try {
@@ -143,7 +120,12 @@ export const resetPassword = asyncHandler(
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { password: hashedPassword },
+      data: {
+        password: hashedPassword,
+        forcePasswordReset: false,
+        passwordChangedAt: new Date(),
+        tempPasswordIssuedAt: null,
+      },
     })
 
     await prisma.passwordHistory.create({
@@ -153,18 +135,10 @@ export const resetPassword = asyncHandler(
       },
     })
 
-    // 🌟 Mark OTP as used ONLY after all validations pass and password is saved
-    if (verifiedOtpId) {
-      await prisma.email_otps.update({
-        where: { id: verifiedOtpId },
-        data: { used: true },
-      })
-    }
-
     await logAudit(
       req,
       'PASSWORD_RESET_SUCCESS',
-      `Password reset successfully for user: ${user.email}${verifiedTotp ? ' (via 2FA)' : otp ? ' (via email OTP)' : resetToken ? ' (via recovery key)' : ''}`,
+      `Password reset successfully for user: ${user.email}${verifiedTotp ? ' (via 2FA)' : resetToken ? ' (via recovery key)' : ''}`,
       user.id,
     )
 

@@ -1,32 +1,28 @@
 // controllers/forceResetController.ts
 import bcrypt from 'bcryptjs'
-import crypto from 'crypto'
 import { Response } from 'express'
 import asyncHandler from 'express-async-handler'
 import prisma from '../lib/prisma'
 import { AuthRequest } from '../middlewares/auth'
-import { sendOTPEmail } from '../services/emailService'
+import { revokeAllUserSessions } from '../middlewares/session'
+import { notifySupervisors } from '../services/securityAlertService'
 import { logAudit } from '../utils/auditLogger'
 import { getClientMetadata } from '../utils/ipSelector'
 
-const OTP_EXPIRE_MINUTES = 5
-
-/**
- * Generate a random 6-digit OTP (CSPRNG)
- */
-const generateOTP = (): string => {
-  return crypto.randomInt(100000, 1000000).toString()
-}
-
 /**
  * @ROUTE   POST /api/auth/users/:uuid/force-reset
- * @DESC    Supervisor forces a user to reset their password on next login
+ * @DESC    Supervisor forces a user to re-enroll 2FA and set a new password on next login
  * @ACCESS  Supervisor only (auth + requireSupervisor)
+ *
+ * 🚫 ไม่มีอีเมล OTP ในขั้นตอนนี้แล้ว — ลำดับบังคับของผู้ใช้คือ
+ *    1) login ด้วยรหัสผ่านที่ Supervisor ให้ไว้
+ *    2) 2FA (ถ้ายังไม่มี secret ต้อง enroll ก่อน / ถ้ามีแล้วต้องยืนยัน)
+ *    3) ตั้งรหัสผ่านใหม่
+ *    ลำดับนี้ถูกบังคับที่ middlewares/auth.ts ไม่ใช่แค่ฝั่งหน้าเว็บ
  */
 export const forceResetUserPassword = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { uuid } = req.params
-    const { ipAddress } = getClientMetadata(req)
 
     const user = await prisma.user.findUnique({ where: { uuid } })
     if (!user) {
@@ -41,49 +37,18 @@ export const forceResetUserPassword = asyncHandler(
       return
     }
 
-    // Invalidate all existing OTPs for this email
-    await prisma.email_otps.updateMany({
-      where: { email: user.email.toLowerCase(), used: false },
-      data: { used: true },
-    })
-
-    // Generate new OTP and send to user's email
-    const otp = generateOTP()
-    const expiresAt = new Date(Date.now() + OTP_EXPIRE_MINUTES * 60 * 1000)
-
-    const hashedOtp = await bcrypt.hash(otp, 12)
-    await prisma.email_otps.create({
-      data: {
-        email: user.email.toLowerCase(),
-        otp: hashedOtp,
-        expiresAt,
-      },
-    })
-
-    try {
-      await sendOTPEmail(user.email, otp, OTP_EXPIRE_MINUTES)
-    } catch (emailErr) {
-      console.error('[ForceReset] OTP email sending failed:', emailErr)
-      res.status(502).json({
-        success: false,
-        message: 'ส่งอีเมลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
-      })
-      return
-    }
-
-    // Set forcePasswordReset flag on the user
+    // 🌟 ตั้ง flag + เวลาที่ออก "รหัสผ่านชั่วคราว" เพื่อบังคับ TTL
     await prisma.user.update({
       where: { id: user.id },
       data: {
         forcePasswordReset: true,
+        tempPasswordIssuedAt: new Date(),
         passwordChangedAt: null,
       },
     })
 
     // Revoke all user sessions so they must log in again
-    await prisma.session.deleteMany({
-      where: { userId: user.id },
-    })
+    await revokeAllUserSessions(user.id)
 
     const supervisor = await prisma.user.findUnique({
       where: { uuid: req.user?.uuid },
@@ -98,137 +63,22 @@ export const forceResetUserPassword = asyncHandler(
 
     res.status(200).json({
       success: true,
-      message: `Force password reset triggered. OTP sent to ${user.email}`,
-    })
-  },
-)
-
-/**
- * @ROUTE   POST /api/auth/force-reset/send-otp
- * @DESC    Send OTP to the current user's email (called on page mount after forced reset)
- * @ACCESS  Authenticated user with forcePasswordReset flag
- */
-export const sendForceResetOTP = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const user = await prisma.user.findUnique({
-      where: { uuid: req.user?.uuid },
-    })
-
-    if (!user) {
-      res.status(404).json({ message: 'User not found' })
-      return
-    }
-
-    if (!user.forcePasswordReset) {
-      res.status(400).json({ message: 'No force password reset required' })
-      return
-    }
-
-    // Invalidate old OTPs for this email
-    await prisma.email_otps.updateMany({
-      where: { email: user.email.toLowerCase(), used: false },
-      data: { used: true },
-    })
-
-    // Generate new OTP
-    const otp = generateOTP()
-    const expiresAt = new Date(Date.now() + OTP_EXPIRE_MINUTES * 60 * 1000)
-
-    const hashedOtp = await bcrypt.hash(otp, 12)
-    await prisma.email_otps.create({
-      data: {
-        email: user.email.toLowerCase(),
-        otp: hashedOtp,
-        expiresAt,
-      },
-    })
-
-    try {
-      await sendOTPEmail(user.email, otp, OTP_EXPIRE_MINUTES)
-    } catch (emailErr) {
-      console.error('[ForceReset] OTP email sending failed:', emailErr)
-      res.status(502).json({
-        success: false,
-        message: 'ส่งอีเมลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
-      })
-      return
-    }
-
-    res.status(200).json({
-      success: true,
-      message: 'OTP sent to your email',
-      expiresInMinutes: OTP_EXPIRE_MINUTES,
-    })
-  },
-)
-
-/**
- * @ROUTE   POST /api/auth/force-reset/resend-otp
- * @DESC    Resend new OTP (invalidates old one)
- * @ACCESS  Authenticated user with forcePasswordReset flag
- */
-export const resendForceResetOTP = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const user = await prisma.user.findUnique({
-      where: { uuid: req.user?.uuid },
-    })
-
-    if (!user) {
-      res.status(404).json({ message: 'User not found' })
-      return
-    }
-
-    if (!user.forcePasswordReset) {
-      res.status(400).json({ message: 'No force password reset required' })
-      return
-    }
-
-    // Invalidate ALL existing unused OTPs for this email
-    await prisma.email_otps.updateMany({
-      where: { email: user.email.toLowerCase(), used: false },
-      data: { used: true },
-    })
-
-    // Generate new OTP
-    const otp = generateOTP()
-    const expiresAt = new Date(Date.now() + OTP_EXPIRE_MINUTES * 60 * 1000)
-
-    const hashedOtp = await bcrypt.hash(otp, 12)
-    await prisma.email_otps.create({
-      data: {
-        email: user.email.toLowerCase(),
-        otp: hashedOtp,
-        expiresAt,
-      },
-    })
-
-    try {
-      await sendOTPEmail(user.email, otp, OTP_EXPIRE_MINUTES)
-    } catch (emailErr) {
-      console.error('[ForceReset] OTP email sending failed:', emailErr)
-      res.status(502).json({
-        success: false,
-        message: 'ส่งอีเมลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง',
-      })
-      return
-    }
-
-    res.status(200).json({
-      success: true,
-      message: 'New OTP sent to your email',
-      expiresInMinutes: OTP_EXPIRE_MINUTES,
+      message: `Force password reset triggered for ${user.email}`,
     })
   },
 )
 
 /**
  * @ROUTE   POST /api/auth/force-reset/verify
- * @DESC    Verify OTP and set new password. Also clears forcePasswordReset flag.
- * @ACCESS  Authenticated user with forcePasswordReset flag
+ * @DESC    Set a new password for an account in the forced-reset flow.
+ *          No OTP is required: the caller already proved 2FA possession when
+ *          signing in, and this route is only reachable after enrollment
+ *          (enforced by middlewares/auth.ts).
+ * @ACCESS  Authenticated user with forcePasswordReset + 2FA enrolled
  */
-export const verifyForceResetOTP = asyncHandler(
+export const verifyForceReset = asyncHandler(
   async (req: AuthRequest, res: Response) => {
-    const { otp, newPassword } = req.body
+    const { newPassword } = req.body
     const { ipAddress, userAgent } = getClientMetadata(req)
 
     const user = await prisma.user.findUnique({
@@ -245,8 +95,13 @@ export const verifyForceResetOTP = asyncHandler(
       return
     }
 
-    if (!otp) {
-      res.status(400).json({ message: 'OTP is required' })
+    // 🌟 ขั้นที่ 2 ของ bootstrap ทำได้เฉพาะเมื่อผ่านการ enroll 2FA แล้วเท่านั้น
+    if (!user.twoFactorEnabled) {
+      res.status(428).json({
+        success: false,
+        code: 'ENROLL_2FA_REQUIRED',
+        message: 'ต้องเปิดใช้งาน 2FA ก่อนจึงจะเปลี่ยนรหัสผ่านได้',
+      })
       return
     }
 
@@ -263,34 +118,6 @@ export const verifyForceResetOTP = asyncHandler(
       })
       return
     }
-
-    // Verify OTP
-    const emailOtps = await prisma.email_otps.findMany({
-      where: {
-        email: user.email.toLowerCase(),
-        used: false,
-        expiresAt: { gt: new Date() },
-      },
-    })
-
-    let emailOtp = null
-    for (const record of emailOtps) {
-      if (await bcrypt.compare(otp, record.otp)) {
-        emailOtp = record
-        break
-      }
-    }
-
-    if (!emailOtp) {
-      res.status(400).json({ message: 'รหัส OTP ไม่ถูกต้องหรือหมดอายุแล้ว' })
-      return
-    }
-
-    // Mark OTP as used
-    await prisma.email_otps.update({
-      where: { id: emailOtp.id },
-      data: { used: true },
-    })
 
     // Check password history (last 3 passwords)
     const history = await prisma.passwordHistory.findMany({
@@ -311,17 +138,16 @@ export const verifyForceResetOTP = asyncHandler(
 
     const hashedPassword = await bcrypt.hash(newPassword, 12)
 
-    // Update user: new password, clear forcePasswordReset, set passwordChangedAt
     await prisma.user.update({
       where: { id: user.id },
       data: {
         password: hashedPassword,
         forcePasswordReset: false,
         passwordChangedAt: new Date(),
+        tempPasswordIssuedAt: null,
       },
     })
 
-    // Add to password history
     await prisma.passwordHistory.create({
       data: {
         userId: user.id,
@@ -332,8 +158,15 @@ export const verifyForceResetOTP = asyncHandler(
     await logAudit(
       req,
       'FORCE_RESET_PASSWORD_SUCCESS',
-      `Password reset successfully after force reset for user: ${user.email}`,
+      `Password reset successfully after forced reset for user: ${user.email}`,
       user.id,
+    )
+
+    // 🌟 การแจ้งเตือนคือ control หลักที่แทน email OTP — บันทึกว่าใครเปลี่ยนเมื่อไหร่จากที่ไหน
+    await notifySupervisors(
+      'FORCE_RESET_PASSWORD_COMPLETED',
+      `แอดมิน ${user.firstname} ${user.lastname} (${user.email}) ตั้งรหัสผ่านใหม่สำเร็จ`,
+      `IP: ${ipAddress} | Device: ${userAgent}`,
     )
 
     res.status(200).json({

@@ -6,7 +6,7 @@ import {
   getAllPopups,
   updatePopup,
 } from '../controllers/splashPopupController'
-import auth, { requireSupervisor } from '../middlewares/auth'
+import auth, { requireAdmin } from '../middlewares/auth'
 import { uploadLimiter } from '../middlewares/rateLimiter'
 import upload from '../middlewares/upload'
 import { logAudit } from '../utils/auditLogger'
@@ -17,13 +17,13 @@ const router: Router = express.Router()
 router.get('/active', getActivePopup)
 
 // GET /api/splash-popups — admin
-router.get('/', auth, requireSupervisor, getAllPopups)
+router.get('/', auth, requireAdmin, getAllPopups)
 
 // POST /api/splash-popups — admin + upload
 router.post(
   '/',
   auth,
-  requireSupervisor,
+  requireAdmin,
   uploadLimiter,
   upload.single('image'),
   async (req, res, next) => {
@@ -43,7 +43,9 @@ router.post(
 router.put(
   '/:id',
   auth,
-  requireSupervisor,
+  requireAdmin,
+  uploadLimiter,
+  upload.single('image'),
   async (req, res, next) => {
     const userId = (req as any).user?.id ?? null
     const isActive = req.body.isActive
@@ -62,7 +64,7 @@ router.put(
 router.delete(
   '/:id',
   auth,
-  requireSupervisor,
+  requireAdmin,
   async (req, res, next) => {
     const userId = (req as any).user?.id ?? null
     await logAudit(

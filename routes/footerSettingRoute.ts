@@ -4,7 +4,7 @@ import {
   updateSettings,
   retryTranslation,
 } from '../controllers/footerSettingController'
-import auth, { requireSupervisor } from '../middlewares/auth'
+import auth, { requireAdmin } from '../middlewares/auth'
 import { logAudit } from '../utils/auditLogger'
 
 const router: Router = express.Router()
@@ -16,7 +16,7 @@ router.get('/', getAllSettings)
 router.put(
   '/',
   auth,
-  requireSupervisor,
+  requireAdmin,
   async (req, res, next) => {
     const userId = (req as any).user?.id ?? null
     await logAudit(

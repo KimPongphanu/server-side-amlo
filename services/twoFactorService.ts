@@ -3,7 +3,6 @@ import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
 import speakeasy from 'speakeasy'
 import prisma from '../lib/prisma'
-import { sendOTPEmail } from './emailService'
 
 export const generateTOTPSecret = (email: string) => {
   const secret = speakeasy.generateSecret({
@@ -23,73 +22,6 @@ export const verifyTOTP = (token: string, secret: string): boolean => {
     token: token,
     window: 1,
   })
-}
-
-export const generateEmailOTP = async (email: string): Promise<boolean> => {
-  // ใช้ CSPRNG — Math.random() ไม่ปลอดภัยพอสำหรับ security token
-  const otp = crypto.randomInt(100000, 1000000).toString()
-  const expiresAt = new Date(Date.now() + 5 * 60 * 1000)
-
-  const hashedOtp = await bcrypt.hash(otp, 12)
-
-  await prisma.email_otps.create({
-    data: {
-      email: email.toLowerCase(),
-      otp: hashedOtp,
-      expiresAt,
-      used: false,
-    },
-  })
-
-  // 🔴 LOG OTP TO CONSOLE FOR DEVELOPMENT ONLY (ห้าม log ใน Production)
-  if (process.env.NODE_ENV !== 'production') {
-    const separator = '='.repeat(60)
-    // console.log(separator)
-    // console.log(`🔐 [OTP] Email: ${email}`)
-    // console.log(`🔐 [OTP] Code:  ${otp}`)
-    // console.log(`🔐 [OTP] Expires at: ${expiresAt.toISOString()}`)
-    // console.log(`🔐 [OTP] Valid for: 5 minutes`)
-    // console.log(separator)
-  }
-
-  try {
-    await sendOTPEmail(email, otp, 5)
-    // console.log(`[OTP] Email sent successfully`)
-    return true
-  } catch (err) {
-    if (process.env.NODE_ENV !== 'production') {
-      // console.log(`[OTP] Email sending failed (SMTP not configured).`)
-    } else {
-      console.error(`[OTP] Email sending failed`)
-    }
-    return false
-  }
-}
-
-export const verifyEmailOTP = async (
-  email: string,
-  otp: string,
-): Promise<boolean> => {
-  const records = await prisma.email_otps.findMany({
-    where: {
-      email: email.toLowerCase(),
-      used: false,
-      expiresAt: { gt: new Date() },
-    },
-  })
-
-  for (const record of records) {
-    const isMatch = await bcrypt.compare(otp, record.otp)
-    if (isMatch) {
-      await prisma.email_otps.update({
-        where: { id: record.id },
-        data: { used: true },
-      })
-      return true
-    }
-  }
-
-  return false
 }
 
 export const generateRecoveryKeys = async (

@@ -18,15 +18,12 @@ import { checkEmail } from '../controllers/checkEmailController'
 import { emergencyAction } from '../controllers/emergencyController'
 import {
   forceResetUserPassword,
-  resendForceResetOTP,
-  sendForceResetOTP,
-  verifyForceResetOTP,
+  verifyForceReset,
 } from '../controllers/forceResetController'
 import { resetPassword } from '../controllers/passwordResetController'
 import auth, { requireSupervisor } from '../middlewares/auth'
 import {
   loginLimiter,
-  otpLimiter,
   registerLimiter,
   verifyLimiter,
 } from '../middlewares/rateLimiter'
@@ -155,24 +152,10 @@ router.post(
 )
 
 /**
- * @ROUTE   POST /api/auth/force-reset/send-otp
- * @DESC    Send OTP to user email for force reset (called on mount)
- * @ACCESS  Authenticated
- */
-router.post('/force-reset/send-otp', auth, otpLimiter, sendForceResetOTP)
-
-/**
- * @ROUTE   POST /api/auth/force-reset/resend-otp
- * @DESC    Resend OTP (invalidates old one)
- * @ACCESS  Authenticated
- */
-router.post('/force-reset/resend-otp', auth, otpLimiter, resendForceResetOTP)
-
-/**
  * @ROUTE   POST /api/auth/force-reset/verify
- * @DESC    Verify OTP + set new password, clears forcePasswordReset flag
- * @ACCESS  Authenticated
+ * @DESC    Set a new password in the forced-reset flow (2FA already verified, no OTP)
+ * @ACCESS  Authenticated user with forcePasswordReset + 2FA enrolled
  */
-router.post('/force-reset/verify', auth, verifyLimiter, verifyForceResetOTP)
+router.post('/force-reset/verify', auth, verifyLimiter, verifyForceReset)
 
 export default router

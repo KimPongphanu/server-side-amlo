@@ -7,13 +7,12 @@ import { AuthRequest } from '../middlewares/auth'
 import { generateCsrfToken, setCsrfCookie } from '../middlewares/csrf'
 import { checkSessionLimit, createSession } from '../middlewares/session'
 import { sendLoginAlertEmail } from '../services/emailService'
+import { notifySupervisors } from '../services/securityAlertService'
 import {
   disableTOTPForUser,
   enableTOTPForUser,
-  generateEmailOTP,
   generateRecoveryKeys,
   generateTOTPSecret,
-  verifyEmailOTP,
   verifyRecoveryKey,
   verifyTOTP,
 } from '../services/twoFactorService'
@@ -34,16 +33,6 @@ interface Verify2FABody {
   tempToken?: string
 }
 
-interface RequestOTPBody {
-  email: string
-}
-
-interface VerifyOTPBody {
-  email: string
-  otp: string
-  tempToken?: string
-}
-
 export const SALT_ROUNDS = 12
 
 export const setup2FA = asyncHandler(
@@ -57,14 +46,17 @@ export const setup2FA = asyncHandler(
       return
     }
 
-    if (user.role !== 'SUPERVISOR') {
-      res.status(403).json({
-        message: '2FA with Authenticator is only for Supervisor accounts',
+    // 🔒 2FA ที่เปิดใช้งานแล้วจะไม่คืน secret เดิมออกไป
+    //    ถ้าคืนได้ การเรียก setup ซ้ำ = โคลน authenticator ได้ตลอดไป
+    if (user.twoFactorEnabled && user.twoFactorSecret) {
+      res.status(409).json({
+        success: false,
+        message: '2FA เปิดใช้งานอยู่แล้ว หากต้องการตั้งค่าใหม่ให้ปิดใช้งานก่อน',
       })
       return
     }
 
-    // ✅ Use existing secret if already saved, otherwise generate new one
+    // ✅ Use existing secret if already saved (partially enrolled), otherwise generate new one
     let secret = user.twoFactorSecret
     let otpauthUrl = ''
 
@@ -89,6 +81,7 @@ export const setup2FA = asyncHandler(
     res.status(200).json({
       success: true,
       data: {
+        secret,
         otpauthUrl,
         qrCodeDataUrl: null,
       },
@@ -138,6 +131,13 @@ export const enable2FA = asyncHandler(
       'ENABLE_2FA_SUCCESS',
       `User enabled 2FA (Authenticator) for account: ${user.email}`,
       user.id,
+    )
+
+    // 🌟 แจ้ง Supervisor ทันทีเมื่อมีการผูก Authenticator — นี่คือจุดที่บัญชีถูกยึดได้
+    await notifySupervisors(
+      'ADMIN_ENROLLED_2FA',
+      `บัญชี ${user.firstname} ${user.lastname} (${user.email}) เปิดใช้งาน 2FA (Authenticator) แล้ว`,
+      `IP: ${ipAddress} | Device: ${userAgent}`,
     )
 
     res.status(200).json({
@@ -261,65 +261,6 @@ export const regenerateRecoveryKeys = asyncHandler(
   },
 )
 
-export const requestEmailOTP = asyncHandler(
-  async (req: Request, res: Response) => {
-    const { email } = req.body as RequestOTPBody
-
-    if (!email) {
-      res.status(400).json({ message: 'Email is required' })
-      return
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-    })
-
-    if (!user) {
-      res.status(404).json({ message: 'ไม่พบบัญชีผู้ใช้นี้ในระบบ' })
-      return
-    }
-
-    const sent = await generateEmailOTP(email.toLowerCase())
-
-    if (!sent) {
-      // ส่งอีเมลไม่สำเร็จ — แจ้งผู้ใช้อย่างตรงไปตรงมา (OTP เก่าจะถูก invalidate เมื่อขอใหม่)
-      res.status(502).json({
-        success: false,
-        message: 'ส่งอีเมลไม่สำเร็จ กรุณาลองใหม่อีกครั้งในภายหลัง',
-      })
-      return
-    }
-
-    res.status(200).json({
-      success: true,
-      message: 'OTP sent to your email. Valid for 5 minutes.',
-    })
-  },
-)
-
-export const verifyEmailOTPForLogin = asyncHandler(
-  async (req: Request, res: Response) => {
-    const { email, otp } = req.body as VerifyOTPBody
-
-    if (!email || !otp) {
-      res.status(400).json({ message: 'Email and OTP are required' })
-      return
-    }
-
-    const isValid = await verifyEmailOTP(email.toLowerCase(), otp)
-
-    if (!isValid) {
-      res.status(400).json({ message: 'Invalid or expired OTP' })
-      return
-    }
-
-    res.status(200).json({
-      success: true,
-      message: 'OTP verified successfully',
-    })
-  },
-)
-
 export const verify2FALogin = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { otpToken } = req.body as Verify2FABody
@@ -363,8 +304,6 @@ export const verify2FALogin = asyncHandler(
 
     if (user.twoFactorMethod === 'AUTHENTICATOR' && user.twoFactorSecret) {
       isValid = verifyTOTP(otpToken, user.twoFactorSecret)
-    } else if (user.twoFactorMethod === 'EMAIL_OTP') {
-      isValid = await verifyEmailOTP(user.email, otpToken)
     }
 
     if (!isValid) {
@@ -418,13 +357,14 @@ export const verify2FALogin = asyncHandler(
     // 🌟 rotate CSRF token ใหม่พร้อม session จริง (double-submit pattern)
     const csrfToken = setCsrfCookie(res, generateCsrfToken())
 
-    await sendLoginAlertEmail(
+    // 🌟 อีเมลแจ้งเตือนเป็น best-effort — ส่งเบื้องหลัง ไม่ block response
+    void sendLoginAlertEmail(
       user.email,
       `${user.firstname} ${user.lastname}`,
       ipAddress,
       userAgent,
       new Date(),
-    )
+    ).catch((err) => console.error('Login alert email failed:', err))
 
     await logAudit(
       req,
@@ -443,6 +383,9 @@ export const verify2FALogin = asyncHandler(
         firstname: user.firstname,
         lastname: user.lastname,
         role: user.role,
+        forcePasswordReset: user.forcePasswordReset,
+        twoFactorEnabled: user.twoFactorEnabled,
+        twoFactorMethod: user.twoFactorMethod,
       },
     })
   },
@@ -461,8 +404,8 @@ export const useRecoveryKey = asyncHandler(
       where: { email: email.toLowerCase() },
     })
 
-    if (!user || user.role !== 'SUPERVISOR') {
-      res.status(404).json({ message: 'Supervisor account not found' })
+    if (!user) {
+      res.status(404).json({ message: 'User not found' })
       return
     }
 

@@ -291,7 +291,11 @@ export const approveRequest = asyncHandler(
       case 'FORCE_RESET':
         await prisma.user.update({
           where: { id: request.targetId },
-          data: { forcePasswordReset: true },
+          data: {
+            forcePasswordReset: true,
+            tempPasswordIssuedAt: new Date(),
+            passwordChangedAt: null,
+          },
         })
         await revokeAllUserSessions(request.targetId)
         actionDescription = `Supervisor ${request.target.email} was force reset by dual approval`

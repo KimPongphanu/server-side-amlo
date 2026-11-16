@@ -20,6 +20,10 @@ import {
 import { sendUserActionAlert } from '../services/emailService'
 import { logAudit } from '../utils/auditLogger'
 import { getClientMetadata } from '../utils/ipSelector'
+import {
+  isTempPasswordExpired,
+  tempPasswordExpiredMessage,
+} from '../utils/tempPasswordPolicy'
 
 const addToPasswordHistory = async (
   userId: number,
@@ -116,7 +120,10 @@ export const registerUser = asyncHandler(
         lastname: lastname.trim(),
         role: requestedRole,
         twoFactorMethod: 'NONE',
-        twoFactorEnabled: requestedRole === 'SUPERVISOR' ? false : false,
+        twoFactorEnabled: false,
+        // 🌟 บัญชีใหม่ทุกบัญชีเริ่มจากรหัสผ่านชั่วคราวของ Supervisor
+        forcePasswordReset: true,
+        tempPasswordIssuedAt: new Date(),
       },
     })
 
@@ -231,6 +238,21 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
     return
   }
 
+  // 🌟 รหัสผ่านชั่วคราวที่ยังไม่ถูกเปลี่ยนมีอายุจำกัด — ต้องให้ Supervisor ออกใหม่
+  if (
+    user.forcePasswordReset &&
+    isTempPasswordExpired(user.tempPasswordIssuedAt)
+  ) {
+    await logAudit(
+      req,
+      'LOGIN_FAILED',
+      `Login blocked for expired temporary password: ${email.slice(0, 50)}`,
+      user.id,
+    )
+    res.status(403).json({ message: tempPasswordExpiredMessage() })
+    return
+  }
+
   // Clear failed attempts upon successful login
   if (failedAttempt) {
     await prisma.failedLoginAttempt.deleteMany({
@@ -275,6 +297,9 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
         firstname: user.firstname,
         lastname: user.lastname,
         role: user.role,
+        forcePasswordReset: user.forcePasswordReset,
+        twoFactorEnabled: user.twoFactorEnabled,
+        twoFactorMethod: user.twoFactorMethod,
       },
     })
     return
